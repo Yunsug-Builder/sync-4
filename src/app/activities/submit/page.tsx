@@ -32,6 +32,7 @@ export default function SubmitActivityPage() {
   const [types, setTypes] = useState<ActivityTypeRow[]>([]);
   const [activityTypeId, setActivityTypeId] = useState("");
   const [content, setContent] = useState("");
+  const [proofUrl, setProofUrl] = useState("");
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +101,19 @@ export default function SubmitActivityPage() {
       return;
     }
 
+    let proofUrlNormalized: string | null = null;
+    const rawUrl = proofUrl.trim();
+    if (rawUrl.length > 0) {
+      try {
+        const withScheme = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+        proofUrlNormalized = new URL(withScheme).toString();
+      } catch {
+        setFormError("원문 링크(URL) 형식을 확인해 주세요.");
+        setSubmitting(false);
+        return;
+      }
+    }
+
     const supabase = getSupabaseBrowserClient();
     const {
       data: { user },
@@ -118,13 +132,14 @@ export default function SubmitActivityPage() {
       artist_id: artistId,
       activity_type_id: activityTypeId.trim(),
       content: text,
+      proof_url: proofUrlNormalized,
       status: "pending" as const,
     };
 
     const { data: inserted, error } = await supabase
       .from("activity_logs")
       .insert(insertPayload)
-      .select("id,user_id,artist_id,activity_type_id,content,status")
+      .select("id,user_id,artist_id,activity_type_id,content,proof_url,status")
       .single();
 
     if (error) {
@@ -240,6 +255,23 @@ export default function SubmitActivityPage() {
                     placeholder="수행한 활동과 인증 내용을 적어 주세요."
                     className="mt-2 w-full resize-none rounded-2xl border border-white/15 bg-zinc-900 px-4 py-3 text-sm outline-none placeholder:text-zinc-500 focus:border-fuchsia-400/50"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium uppercase tracking-wide text-zinc-500">
+                    원문 링크 <span className="font-normal text-zinc-600">(선택)</span>
+                  </label>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    value={proofUrl}
+                    onChange={(e) => setProofUrl(e.target.value)}
+                    placeholder="https://…"
+                    className="mt-2 h-12 w-full rounded-2xl border border-white/15 bg-zinc-900 px-4 text-sm outline-none placeholder:text-zinc-500 focus:border-fuchsia-400/50"
+                  />
+                  <p className="mt-1.5 text-xs text-zinc-600">
+                    피드에서 &ldquo;원문 보러가기&rdquo;로 열립니다.
+                  </p>
                 </div>
 
                 <button

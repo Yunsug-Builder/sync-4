@@ -1,0 +1,177 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { estimatedBonusPoints } from "@/lib/rewards";
+
+export default function ProfilePage() {
+  const [loading, setLoading] = useState(true);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [totalPoints, setTotalPoints] = useState<number | null>(null);
+  const [expectedBonusSum, setExpectedBonusSum] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const loadProfile = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient();
+    setLoading(true);
+    setLoadError(null);
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user?.id) {
+      setLoggedIn(false);
+      setTotalPoints(null);
+      setExpectedBonusSum(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoggedIn(true);
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("total_points")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileErr) {
+      setLoadError(profileErr.message);
+      setTotalPoints(null);
+      setExpectedBonusSum(null);
+      setLoading(false);
+      return;
+    }
+
+    const tp =
+      typeof (profile as { total_points?: number } | null)?.total_points === "number"
+        ? (profile as { total_points: number }).total_points
+        : 0;
+    setTotalPoints(tp);
+
+    const { data: logs, error: qErr } = await supabase
+      .from("activity_logs")
+      .select("id, view_count")
+      .eq("user_id", user.id)
+      .eq("status", "approved")
+      .eq("is_settled", false);
+
+    if (qErr) {
+      setLoadError(qErr.message);
+      setExpectedBonusSum(null);
+      setLoading(false);
+      return;
+    }
+
+    let sum = 0;
+    for (const log of logs ?? []) {
+      const row = log as { id: string; view_count?: number };
+      const { count } = await supabase
+        .from("activity_syncs")
+        .select("*", { count: "exact", head: true })
+        .eq("activity_log_id", row.id);
+
+      const vc =
+        typeof row.view_count === "number" && !Number.isNaN(row.view_count)
+          ? row.view_count
+          : 0;
+      sum += estimatedBonusPoints(count ?? 0, vc);
+    }
+
+    setExpectedBonusSum(sum);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadProfile());
+  }, [loadProfile]);
+
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "SIGNED_OUT") {
+        window.location.reload();
+      }
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-zinc-950 px-6 py-12 text-zinc-100">
+      <div className="mx-auto max-w-lg">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h1 className="text-2xl font-semibold text-white">프로필</h1>
+          {loggedIn ? (
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void loadProfile()}
+              className="shrink-0 rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-fuchsia-400/40 hover:text-white disabled:opacity-50"
+            >
+              {loading ? "불러오는 중…" : "포인트 새로고침"}
+            </button>
+          ) : null}
+        </div>
+
+        {!loading && !loggedIn ? (
+          <p className="mt-6 text-sm text-zinc-400">
+            로그인 후 마이페이지 기능을 이용할 수 있어요.{" "}
+            <Link href="/login?next=/profile" className="text-fuchsia-300 underline">
+              로그인
+            </Link>
+          </p>
+        ) : null}
+
+        {loadError ? (
+          <p className="mt-6 text-sm text-red-300">{loadError}</p>
+        ) : null}
+
+        {loggedIn ? (
+          <>
+            <section className="mt-8 rounded-2xl border border-white/10 bg-zinc-900/50 px-5 py-5">
+              <h2 className="text-sm font-semibold text-zinc-300">누적 포인트 (total_points)</h2>
+              <p className="mt-3 text-3xl font-bold tabular-nums text-white">
+                {loading && totalPoints == null
+                  ? "…"
+                  : (totalPoints ?? 0).toLocaleString("ko-KR")}
+                <span className="ml-1 text-base font-medium text-zinc-400">pt</span>
+              </p>
+              <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+                승인 시 기본 점수와 주간 정산으로 반영된 가중 보너스가 합산된 값입니다. 정산 직후
+                위의 「포인트 새로고침」으로 최신 값을 확인하세요.
+              </p>
+            </section>
+
+            <section className="mt-6 rounded-2xl border border-fuchsia-500/25 bg-fuchsia-500/5 px-5 py-5">
+              <h2 className="text-sm font-semibold text-fuchsia-100">
+                이번 주 획득 예정 포인트
+              </h2>
+              <p className="mt-3 text-3xl font-bold tabular-nums text-white">
+                {loading
+                  ? "…"
+                  : expectedBonusSum != null
+                    ? `+${expectedBonusSum.toLocaleString("ko-KR")}`
+                    : "0"}
+                <span className="ml-1 text-base font-medium text-zinc-400">pt</span>
+              </p>
+              <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+                승인되었고 아직 정산되지 않은 내 활동의 예상 가중 보너스 합계입니다. (Sync×5 +
+                조회÷10)
+              </p>
+              <p className="mt-4 text-xs text-zinc-500">매주 월요일 정기 정산이 진행됩니다.</p>
+            </section>
+
+            <Link
+              href="/settlements"
+              className="mt-6 inline-flex h-11 items-center justify-center rounded-2xl border border-white/15 px-5 text-sm font-medium text-zinc-200 transition hover:border-fuchsia-400/40 hover:text-white"
+            >
+              정산 이력 보기
+            </Link>
+          </>
+        ) : null}
+      </div>
+    </div>
+  );
+}

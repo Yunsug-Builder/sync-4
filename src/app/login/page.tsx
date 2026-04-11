@@ -25,9 +25,17 @@ function mapOtpError(message: string): string {
   return message;
 }
 
+function safeInternalPath(next: string | null): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) {
+    return "/";
+  }
+  return next;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectTo = safeInternalPath(searchParams.get("next"));
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -50,20 +58,20 @@ function LoginForm() {
 
     void supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        router.replace("/");
+        router.replace(redirectTo);
       }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
-        router.replace("/");
+        router.replace(redirectTo);
       }
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, redirectTo]);
 
   const handleMagicLink = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
