@@ -2,6 +2,7 @@ import Link from "next/link";
 
 const LINKS = [
   { href: "/", label: "메인" },
+  { href: "/leaderboard", label: "랭킹" },
   { href: "/admin", label: "관리자" },
   { href: "/login", label: "로그인" },
   { href: "/profile", label: "프로필" },
