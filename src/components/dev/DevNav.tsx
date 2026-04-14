@@ -6,6 +6,8 @@ const LINKS = [
   { href: "/admin", label: "관리자" },
   { href: "/login", label: "로그인" },
   { href: "/profile", label: "프로필" },
+  { href: "/shop", label: "상점" },
+  { href: "/inventory", label: "인벤토리" },
   { href: "/settlements", label: "정산" },
 ] as const;
 

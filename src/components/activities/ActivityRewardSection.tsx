@@ -1,9 +1,9 @@
 "use client";
 
-import { estimatedBonusPoints } from "@/lib/rewards";
+import { estimatedBonusVibes } from "@/lib/rewards";
 
 type Props = {
-  basePoints: number;
+  baseVibes: number;
   viewCount: number;
   syncCount: number;
   isSettled: boolean;
@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function ActivityRewardSection({
-  basePoints,
+  baseVibes,
   viewCount,
   syncCount,
   isSettled,
@@ -21,7 +21,7 @@ export function ActivityRewardSection({
     return null;
   }
 
-  const bonusPreview = estimatedBonusPoints(syncCount, viewCount);
+  const bonusPreview = estimatedBonusVibes(syncCount, viewCount);
 
   return (
     <section className="mt-10 border-t border-white/10 pt-8">
@@ -32,11 +32,11 @@ export function ActivityRewardSection({
         <div className="rounded-2xl border border-white/10 bg-zinc-900/50 px-4 py-4">
           <p className="text-xs font-medium text-zinc-500">기본 리워드 (지급 완료)</p>
           <p className="mt-2 text-2xl font-bold tabular-nums text-white">
-            +{basePoints.toLocaleString("ko-KR")}
-            <span className="ml-1 text-sm font-medium text-zinc-400">pt</span>
+            +{baseVibes.toLocaleString("ko-KR")}
+            <span className="ml-1 text-sm font-medium text-zinc-400">V</span>
           </p>
           <p className="mt-2 text-xs text-zinc-500">
-            승인 시 활동 유형 기준으로 즉시 지급된 포인트입니다.
+            승인 시 활동 유형 기준으로 즉시 지급된 VIBE입니다.
           </p>
         </div>
         <div className="rounded-2xl border border-fuchsia-500/20 bg-fuchsia-500/5 px-4 py-4">
@@ -52,7 +52,7 @@ export function ActivityRewardSection({
             <>
               <p className="mt-2 text-2xl font-bold tabular-nums text-fuchsia-100">
                 +{bonusPreview.toLocaleString("ko-KR")}
-                <span className="ml-1 text-sm font-medium text-fuchsia-200/70">pt</span>
+                <span className="ml-1 text-sm font-medium text-fuchsia-200/70">V</span>
               </p>
               <p className="mt-2 text-xs leading-relaxed text-zinc-500">
                 (현재 Sync {syncCount.toLocaleString("ko-KR")} × 5) + (조회{" "}

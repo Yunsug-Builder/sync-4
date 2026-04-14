@@ -32,7 +32,7 @@ type DetailData = {
   proofUrl: string | null;
   nickname: string;
   activityName: string;
-  points: number;
+  vibes: number;
   status: string;
   viewCount: number;
   isSettled: boolean;
@@ -104,7 +104,7 @@ export default function ActivityDetailPage() {
           view_count,
           is_settled,
           profiles ( nickname ),
-          activity_types ( name, base_points )
+          activity_types ( name, base_vibes )
         `
         )
         .eq("id", id.trim())
@@ -129,7 +129,7 @@ export default function ActivityDetailPage() {
       const r = row as Row;
       const prof = firstOrNull(r.profiles as { nickname: string | null } | null);
       const at = firstOrNull(
-        r.activity_types as { name: string; base_points?: number } | null
+        r.activity_types as { name: string; base_vibes?: number } | null
       );
 
       const vc =
@@ -143,7 +143,7 @@ export default function ActivityDetailPage() {
         proofUrl: r.proof_url,
         nickname: prof?.nickname?.trim() || "익명",
         activityName: at?.name?.trim() || "활동",
-        points: typeof at?.base_points === "number" ? at.base_points : 0,
+        vibes: typeof at?.base_vibes === "number" ? at.base_vibes : 0,
         status: r.status,
         viewCount: vc,
         isSettled: Boolean(r.is_settled),
@@ -209,7 +209,7 @@ export default function ActivityDetailPage() {
     void supabase
       .from("activity_syncs")
       .select("*", { count: "exact", head: true })
-      .eq("activity_log_id", id.trim())
+      .eq("activity_id", id.trim())
       .then(({ count, error }) => {
         if (!error) {
           setSyncCount(count ?? 0);
@@ -272,10 +272,10 @@ export default function ActivityDetailPage() {
                   <p className="mt-1 text-xl font-semibold text-white">{data.nickname}</p>
                 </div>
                 <div className="rounded-2xl border border-sync-purple/40 bg-sync-purple/10 px-5 py-3 text-center sm:text-right">
-                  <p className="text-xs font-medium text-zinc-400">획득 포인트</p>
+                  <p className="text-xs font-medium text-zinc-400">획득 VIBE</p>
                   <p className="mt-1 text-3xl font-bold tabular-nums text-sync-purple">
-                    +{data.points.toLocaleString("ko-KR")}
-                    <span className="ml-1 text-lg font-semibold text-fuchsia-200/80">pt</span>
+                    +{data.vibes.toLocaleString("ko-KR")}
+                    <span className="ml-1 text-lg font-semibold text-fuchsia-200/80">V</span>
                   </p>
                 </div>
               </div>
@@ -317,7 +317,7 @@ export default function ActivityDetailPage() {
 
             {isApproved ? (
               <ActivityRewardSection
-                basePoints={data.points}
+                baseVibes={data.vibes}
                 viewCount={data.viewCount}
                 syncCount={syncCount}
                 isSettled={data.isSettled}

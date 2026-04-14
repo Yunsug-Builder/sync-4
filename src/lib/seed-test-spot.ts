@@ -19,10 +19,9 @@ export async function insertTestSpotRow(
     .from("spots")
     .insert({
       title: TEST_SPOT_TITLE,
-      subtitle: "서울 · 광화문 인근",
-      region: "서울",
-      reward_points: 120,
-      note: "Supabase 연동 테스트용 강제 삽입 행입니다. Table Editor에서 삭제해도 됩니다.",
+      lat: 37.5759,
+      lng: 126.9768,
+      image_url: null,
     })
     .select()
     .single();

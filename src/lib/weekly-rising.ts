@@ -13,7 +13,7 @@ const EXPECTED_LEADERBOARD_ROW_KEYS = [
   "user_id",
   "display_name",
   "avatar_url",
-  "weekly_points",
+  "weekly_vibes",
   "week_post_count",
   "week_sync_received",
   "week_view_sum",
@@ -24,7 +24,7 @@ export type WeeklyLeaderboardRow = {
   /** DB에서 `nickname` 컬럼을 `display_name` 별칭으로 반환 — 표시용으로 이 필드만 사용 */
   display_name: string | null;
   avatar_url: string | null;
-  weekly_points: number;
+  weekly_vibes: number;
   week_post_count: number;
   week_sync_received: number;
   week_view_sum: number;
@@ -33,7 +33,7 @@ export type WeeklyLeaderboardRow = {
 export type WeeklyUserPlace = {
   /** RPC `rank` (또는 호환 별칭) */
   rank: number;
-  weekly_points: number;
+  weekly_vibes: number;
   week_post_count: number;
   week_sync_received: number;
   week_view_sum: number;
@@ -113,7 +113,7 @@ function pickRankFromRpcRow(r: Record<string, unknown>): number {
 }
 
 /**
- * RPC 행을 정규화합니다. weekly_points ≤ 0 제거, 점수 내림차순·user_id 보조 정렬.
+ * RPC 행을 정규화합니다. weekly_vibes ≤ 0 제거, 점수 내림차순·user_id 보조 정렬.
  */
 export function normalizeWeeklyLeaderboardRows(
   raw: Record<string, unknown>[]
@@ -130,17 +130,17 @@ export function normalizeWeeklyLeaderboardRows(
     user_id: String(r.user_id ?? ""),
     display_name: pickDisplayNameFromRpcRow(r),
     avatar_url: (r.avatar_url as string | null) ?? null,
-    weekly_points: num(r.weekly_points),
+    weekly_vibes: num(r.weekly_vibes ?? r.weekly_points),
     week_post_count: num(r.week_post_count),
     week_sync_received: num(r.week_sync_received),
     week_view_sum: num(r.week_view_sum),
   }));
 
-  const positive = mapped.filter((row) => row.weekly_points > 0 && row.user_id.length > 0);
+  const positive = mapped.filter((row) => row.weekly_vibes > 0 && row.user_id.length > 0);
 
   positive.sort((a, b) => {
-    if (b.weekly_points !== a.weekly_points) {
-      return b.weekly_points - a.weekly_points;
+    if (b.weekly_vibes !== a.weekly_vibes) {
+      return b.weekly_vibes - a.weekly_vibes;
     }
     return a.user_id.localeCompare(b.user_id);
   });
@@ -199,7 +199,7 @@ export async function fetchWeeklyRisingUserPlace(
 
   const r = raw as Record<string, unknown>;
   const rank = pickRankFromRpcRow(r);
-  const wp = num(r.weekly_points);
+  const wp = num(r.weekly_vibes ?? r.weekly_points);
   if (rank <= 0 || wp <= 0) {
     if (IS_DEV) {
       const keys = Object.keys(r);
@@ -207,14 +207,16 @@ export async function fetchWeeklyRisingUserPlace(
         typeof r.rank === "number" ||
         typeof r.ranking === "number" ||
         (typeof r.rank === "string" && r.rank.trim() !== "");
-      const hasNumericPoints = r.weekly_points != null && String(r.weekly_points).length > 0;
+      const hasNumericPoints =
+        (r.weekly_vibes != null && String(r.weekly_vibes).length > 0) ||
+        (r.weekly_points != null && String(r.weekly_points).length > 0);
       if (keys.length > 0 && hasNumericRank && hasNumericPoints && (rank <= 0 || wp <= 0)) {
-        devWarn(`${USER_PLACE_RPC}: rank/weekly_points present but parsed as invalid — check column names`, {
+        devWarn(`${USER_PLACE_RPC}: rank/weekly_vibes present but parsed as invalid — check column names`, {
           p_user_id: uid,
           receivedKeys: keys,
           rawRank: r.rank,
           rawRanking: r.ranking,
-          rawWeeklyPoints: r.weekly_points,
+          rawWeeklyVibes: r.weekly_vibes ?? r.weekly_points,
           parsedRank: rank,
           parsedWeeklyPoints: wp,
         });
@@ -226,7 +228,7 @@ export async function fetchWeeklyRisingUserPlace(
   return {
     place: {
       rank: Math.floor(rank),
-      weekly_points: wp,
+      weekly_vibes: wp,
       week_post_count: num(r.week_post_count),
       week_sync_received: num(r.week_sync_received),
       week_view_sum: num(r.week_view_sum),

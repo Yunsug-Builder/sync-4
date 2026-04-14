@@ -1,10 +1,10 @@
-import { estimatedBonusPoints } from "@/lib/rewards";
+import { estimatedBonusVibes } from "@/lib/rewards";
 import { safeDateTimeMs } from "@/lib/week-utils";
 
 export type SettlementHistoryRow = {
   id: string;
   week_start: string;
-  bonus_points: number;
+  bonus_vibes: number;
   created_at: string;
 };
 
@@ -14,8 +14,8 @@ export type PostBreakdown = {
   activityName: string;
   viewCount: number;
   syncCount: number;
-  syncPoints: number;
-  viewPoints: number;
+  syncVibes: number;
+  viewVibes: number;
   bonusTotal: number;
   created_at: string;
 };
@@ -35,9 +35,9 @@ export function buildPostBreakdown(
       ? Math.max(0, Math.floor(log.view_count))
       : 0;
   const sync = Math.max(0, Math.floor(syncCount));
-  const syncPoints = sync * 5;
-  const viewPoints = Math.floor(views / 10);
-  const bonusTotal = estimatedBonusPoints(sync, views);
+  const syncVibes = sync * 5;
+  const viewVibes = Math.floor(views / 10);
+  const bonusTotal = estimatedBonusVibes(sync, views);
   const raw = log.content?.trim() ?? "";
   const contentPreview =
     raw.length > 120 ? `${raw.slice(0, 120)}…` : raw || "내용 없음";
@@ -53,28 +53,28 @@ export function buildPostBreakdown(
     activityName: name || "활동",
     viewCount: views,
     syncCount: sync,
-    syncPoints,
-    viewPoints,
+    syncVibes,
+    viewVibes,
     bonusTotal,
     created_at: log.created_at,
   };
 }
 
 export function sumBreakdownParts(posts: PostBreakdown[]): {
-  syncPoints: number;
-  viewPoints: number;
+  syncVibes: number;
+  viewVibes: number;
   total: number;
 } {
-  let syncPoints = 0;
-  let viewPoints = 0;
+  let syncVibes = 0;
+  let viewVibes = 0;
   for (const p of posts) {
-    syncPoints += p.syncPoints;
-    viewPoints += p.viewPoints;
+    syncVibes += p.syncVibes;
+    viewVibes += p.viewVibes;
   }
   return {
-    syncPoints,
-    viewPoints,
-    total: syncPoints + viewPoints,
+    syncVibes,
+    viewVibes,
+    total: syncVibes + viewVibes,
   };
 }
 
@@ -94,18 +94,18 @@ export function pickBestContributorId(posts: PostBreakdown[]): string | null {
 
 export type WeekLineItem =
   | { kind: "post"; post: PostBreakdown }
-  | { kind: "deleted"; key: string; bonusPoints: number };
+  | { kind: "deleted"; key: string; bonusVibes: number };
 
 /**
- * settlement_history.bonus_points(불변)과 현재 조회 가능한 로그 합의 차이를
+ * settlement_history.bonus_vibes(불변)과 현재 조회 가능한 로그 합의 차이를
  * 삭제된 활동 한 줄로 흡수합니다.
  */
 export function mergeDeletedGap(
-  rowBonusPoints: number,
+  rowBonusVibes: number,
   posts: PostBreakdown[],
   settlementRowId: string
 ): WeekLineItem[] {
-  const safeRow = Math.max(0, Math.floor(Number(rowBonusPoints) || 0));
+  const safeRow = Math.max(0, Math.floor(Number(rowBonusVibes) || 0));
   const sumPosted = posts.reduce(
     (s, p) => s + Math.max(0, Math.floor(p.bonusTotal)),
     0
@@ -116,7 +116,7 @@ export function mergeDeletedGap(
     lines.push({
       kind: "deleted",
       key: `deleted-${settlementRowId}`,
-      bonusPoints: remainder,
+      bonusVibes: remainder,
     });
   }
   return lines;

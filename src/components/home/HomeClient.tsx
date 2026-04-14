@@ -47,7 +47,7 @@ function normalizeFeedRow(row: FeedRowRaw): FeedEntry {
 
 export default function HomeClient() {
   const [session, setSession] = useState<Session | null>(null);
-  const [me, setMe] = useState<{ nickname: string | null; total_points: number } | null>(
+  const [me, setMe] = useState<{ nickname: string | null; total_vibes: number } | null>(
     null
   );
   const [entries, setEntries] = useState<FeedEntry[]>([]);
@@ -80,7 +80,7 @@ export default function HomeClient() {
     const supabase = getSupabaseBrowserClient();
     void supabase
       .from("profiles")
-      .select("nickname, total_points")
+      .select("nickname, total_vibes")
       .eq("id", uid)
       .maybeSingle()
       .then(({ data, error }) => {
@@ -94,7 +94,7 @@ export default function HomeClient() {
         }
         setMe({
           nickname: data.nickname,
-          total_points: typeof data.total_points === "number" ? data.total_points : 0,
+          total_vibes: typeof data.total_vibes === "number" ? data.total_vibes : 0,
         });
       });
   }, [session?.user?.id]);
@@ -182,11 +182,11 @@ export default function HomeClient() {
               <div className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-2 text-right text-xs text-zinc-400">
                 <p className="font-medium text-zinc-200">{meLabel ?? "회원"}</p>
                 <p className="mt-0.5 tabular-nums text-zinc-500">
-                  포인트{" "}
+                  VIBE{" "}
                   <span className="font-semibold text-fuchsia-200/90">
-                    {(me?.total_points ?? 0).toLocaleString("ko-KR")}
+                    {(me?.total_vibes ?? 0).toLocaleString("ko-KR")}
                   </span>
-                  pt
+                  V
                 </p>
               </div>
             ) : (

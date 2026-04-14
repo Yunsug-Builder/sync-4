@@ -13,7 +13,7 @@ import {
   type WeekLineItem,
 } from "@/components/settlements/settlement-report-types";
 import {
-  SETTLEMENT_HISTORY_BONUS_POINTS_COLUMN,
+  SETTLEMENT_HISTORY_BONUS_VIBES_COLUMN,
   SETTLEMENT_HISTORY_WEEK_START_COLUMN,
 } from "@/lib/settlement-metadata";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
@@ -43,7 +43,7 @@ export default function SettlementsPage() {
   const [weekLoading, setWeekLoading] = useState<string | null>(null);
 
   const wkCol = SETTLEMENT_HISTORY_WEEK_START_COLUMN;
-  const bpCol = SETTLEMENT_HISTORY_BONUS_POINTS_COLUMN;
+  const bpCol = SETTLEMENT_HISTORY_BONUS_VIBES_COLUMN;
 
   const loadPostsForWeek = useCallback(
     async (uid: string, weekStart: string): Promise<PostBreakdown[]> => {
@@ -88,7 +88,7 @@ export default function SettlementsPage() {
         const { count } = await supabase
           .from("activity_syncs")
           .select("*", { count: "exact", head: true })
-          .eq("activity_log_id", log.id);
+          .eq("activity_id", log.id);
 
         const at = firstOrNull(
           log.activity_types as { name: string | null } | null
@@ -164,7 +164,7 @@ export default function SettlementsPage() {
             return {
               id: String(r.id),
               week_start: weekStart,
-              bonus_points: Number(r[bpCol] ?? 0),
+              bonus_vibes: Number(r[bpCol] ?? 0),
               created_at: createdAt,
             };
           })
@@ -202,7 +202,7 @@ export default function SettlementsPage() {
         <span className="shrink-0 text-zinc-600">보너스</span>
         <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
           <span className="tabular-nums">
-            (Sync {p.syncCount.toLocaleString("ko-KR")} × 5pt)
+            (Sync {p.syncCount.toLocaleString("ko-KR")} × 5V)
           </span>
           <span className="text-zinc-600">+</span>
           <span className="tabular-nums">
@@ -211,8 +211,8 @@ export default function SettlementsPage() {
         </span>
       </div>
       <p className="tabular-nums leading-relaxed text-zinc-500">
-        = {p.syncPoints.toLocaleString("ko-KR")} + {p.viewPoints.toLocaleString("ko-KR")} ={" "}
-        <span className="text-zinc-300">{p.bonusTotal.toLocaleString("ko-KR")}pt</span>
+        = {p.syncVibes.toLocaleString("ko-KR")} + {p.viewVibes.toLocaleString("ko-KR")} ={" "}
+        <span className="text-zinc-300">{p.bonusTotal.toLocaleString("ko-KR")}V</span>
       </p>
     </div>
   );
@@ -226,8 +226,8 @@ export default function SettlementsPage() {
         >
           <p className="text-sm text-zinc-500">(삭제된 활동입니다)</p>
           <p className="mt-3 text-lg font-semibold tabular-nums text-zinc-400">
-            +{item.bonusPoints.toLocaleString("ko-KR")}
-            <span className="ml-1 text-sm font-normal text-zinc-600">pt</span>
+            +{item.bonusVibes.toLocaleString("ko-KR")}
+            <span className="ml-1 text-sm font-normal text-zinc-600">V</span>
           </p>
           <p className="mt-2 text-[11px] leading-relaxed text-zinc-600">
             정산 시점에 확정된 보너스 중, 더 이상 조회할 수 없는 활동에 해당하는 분입니다.
@@ -254,7 +254,7 @@ export default function SettlementsPage() {
         </div>
         <p className="mt-3 text-lg font-semibold tabular-nums text-white">
           +{p.bonusTotal.toLocaleString("ko-KR")}
-          <span className="ml-1 text-sm font-normal text-zinc-500">pt</span>
+          <span className="ml-1 text-sm font-normal text-zinc-500">V</span>
         </p>
         {renderFormulaLines(p)}
       </li>
@@ -332,11 +332,11 @@ export default function SettlementsPage() {
                   <p className="text-sm text-zinc-500">집계 중…</p>
                 ) : (
                   <>
-                    <p className="text-xs text-zinc-500">이번 주 확정 총 보너스</p>
+                    <p className="text-xs text-zinc-500">이번 주 확정 총 보너스 VIBE</p>
                     <p className="mt-2 text-4xl font-semibold tabular-nums tracking-tight text-white">
                       +
-                      {(currentWeekSettlement?.bonus_points ?? 0).toLocaleString("ko-KR")}
-                      <span className="ml-1.5 text-lg font-medium text-zinc-400">pt</span>
+                      {(currentWeekSettlement?.bonus_vibes ?? 0).toLocaleString("ko-KR")}
+                      <span className="ml-1.5 text-lg font-medium text-zinc-400">V</span>
                     </p>
                     {!currentWeekSettlement ? (
                       <p className="mt-3 text-xs text-amber-200/80">
@@ -348,8 +348,8 @@ export default function SettlementsPage() {
                       <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
                         <p className="text-xs font-medium text-zinc-500">Sync 기여</p>
                         <p className="mt-1 text-xl font-semibold tabular-nums text-emerald-200">
-                          +{heroParts.syncPoints.toLocaleString("ko-KR")}
-                          <span className="ml-1 text-sm font-normal text-zinc-500">pt</span>
+                          +{heroParts.syncVibes.toLocaleString("ko-KR")}
+                          <span className="ml-1 text-sm font-normal text-zinc-500">V</span>
                         </p>
                         <p className="mt-2 text-[11px] leading-snug text-zinc-600">
                           Σ (Sync 수 × 5), 이번 주 게시글 합
@@ -358,8 +358,8 @@ export default function SettlementsPage() {
                       <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
                         <p className="text-xs font-medium text-zinc-500">조회 기여</p>
                         <p className="mt-1 text-xl font-semibold tabular-nums text-sky-200">
-                          +{heroParts.viewPoints.toLocaleString("ko-KR")}
-                          <span className="ml-1 text-sm font-normal text-zinc-500">pt</span>
+                          +{heroParts.viewVibes.toLocaleString("ko-KR")}
+                          <span className="ml-1 text-sm font-normal text-zinc-500">V</span>
                         </p>
                         <p className="mt-2 text-[11px] leading-snug text-zinc-600">
                           Σ ⌊조회 ÷ 10⌋, 이번 주 게시글 합
@@ -369,9 +369,9 @@ export default function SettlementsPage() {
 
                     {heroPosts !== null &&
                     currentWeekSettlement &&
-                    heroParts.total !== currentWeekSettlement.bonus_points ? (
+                    heroParts.total !== currentWeekSettlement.bonus_vibes ? (
                       <p className="mt-4 text-[11px] text-amber-200/70">
-                        참고: 역산 합({heroParts.total}pt)과 확정액이 다를 수 있습니다. (다른 주차
+                        참고: 역산 합({heroParts.total}V)과 확정액이 다를 수 있습니다. (다른 주차
                         데이터 혼입·반올림 등)
                       </p>
                     ) : null}
@@ -401,7 +401,7 @@ export default function SettlementsPage() {
                       posts !== undefined ? pickBestContributorId(posts) : null;
                     const lineItems =
                       posts !== undefined
-                        ? mergeDeletedGap(row.bonus_points, posts, row.id)
+                        ? mergeDeletedGap(row.bonus_vibes, posts, row.id)
                         : [];
                     const sumPosted =
                       posts?.reduce(
@@ -410,7 +410,7 @@ export default function SettlementsPage() {
                       ) ?? 0;
                     const rowBonusSafe = Math.max(
                       0,
-                      Math.floor(Number(row.bonus_points) || 0)
+                      Math.floor(Number(row.bonus_vibes) || 0)
                     );
                     const dataDrift = posts !== undefined && sumPosted > rowBonusSafe;
 
@@ -435,7 +435,7 @@ export default function SettlementsPage() {
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-lg font-semibold tabular-nums text-emerald-300/95">
-                              +{row.bonus_points.toLocaleString("ko-KR")} pt
+                              +{row.bonus_vibes.toLocaleString("ko-KR")} V
                             </span>
                             <ChevronDown
                               className={`h-5 w-5 shrink-0 text-zinc-500 transition ${
@@ -458,8 +458,8 @@ export default function SettlementsPage() {
                               <>
                                 {dataDrift ? (
                                   <p className="mb-3 text-[11px] text-amber-200/80">
-                                    참고: 현재 게시글 합({sumPosted.toLocaleString("ko-KR")}pt)이
-                                    확정액({rowBonusSafe.toLocaleString("ko-KR")}pt)보다 큽니다. 데이터
+                                    참고: 현재 게시글 합({sumPosted.toLocaleString("ko-KR")}V)이
+                                    확정액({rowBonusSafe.toLocaleString("ko-KR")}V)보다 큽니다. 데이터
                                     불일치일 수 있어요.
                                   </p>
                                 ) : null}

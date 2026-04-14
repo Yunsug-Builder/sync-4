@@ -10,7 +10,7 @@ type PendingLog = {
   created_at: string;
   user_id: string;
   profiles: { nickname: string | null } | null;
-  activity_types: { name: string; base_points: number } | null;
+  activity_types: { name: string; base_vibes: number } | null;
 };
 
 type ApprovedLog = {
@@ -23,7 +23,7 @@ type ApprovedLog = {
   sync_count: number;
   estimated_bonus: number;
   profiles: { nickname: string | null } | null;
-  activity_types: { name: string; base_points: number } | null;
+  activity_types: { name: string; base_vibes: number } | null;
 };
 
 function formatDate(iso: string) {
@@ -105,7 +105,7 @@ export default function AdminPage() {
       `/api/admin/activity-logs/${encodeURIComponent(id)}/approve`,
       { method: "POST" }
     );
-    let body: { ok?: boolean; error?: string; points_added?: number } = {};
+    let body: { ok?: boolean; error?: string; vibes_added?: number } = {};
     try {
       body = (await res.json()) as typeof body;
     } catch {
@@ -116,7 +116,7 @@ export default function AdminPage() {
     const approved =
       res.ok &&
       (body.ok === true ||
-        (typeof body.points_added === "number" && body.points_added >= 0));
+        (typeof body.vibes_added === "number" && body.vibes_added >= 0));
 
     if (!approved) {
       setBanner(body.error ?? "승인 처리에 실패했습니다.");
@@ -151,7 +151,7 @@ export default function AdminPage() {
       if (n === 0) {
         toast.info("정산할 대상이 없습니다");
       } else {
-        toast.success(`${n}명의 유저에게 포인트 정산이 완료되었습니다`);
+        toast.success(`${n}명의 유저에게 VIBE 정산이 완료되었습니다`);
       }
       void loadApproved();
     } catch {
@@ -188,7 +188,7 @@ export default function AdminPage() {
               인증 대기 큐
             </h1>
             <p className="mt-2 max-w-xl text-sm text-zinc-400">
-              제출된 활동을 검토하고 승인하면 유형별 기본 점수가 사용자에게 반영됩니다.
+              제출된 활동을 검토하고 승인하면 유형별 기본 VIBE가 사용자에게 반영됩니다.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -241,7 +241,7 @@ export default function AdminPage() {
                   <tr className="border-b border-white/10 bg-zinc-900/80 text-xs uppercase tracking-wide text-zinc-500">
                     <th className="px-5 py-3 font-medium">닉네임</th>
                     <th className="px-5 py-3 font-medium">활동 유형</th>
-                    <th className="px-5 py-3 font-medium tabular-nums">점수</th>
+                    <th className="px-5 py-3 font-medium tabular-nums">VIBE</th>
                     <th className="px-5 py-3 font-medium">제출 내용</th>
                     <th className="px-5 py-3 font-medium">제출일</th>
                     <th className="px-5 py-3 font-medium text-right">처리</th>
@@ -251,14 +251,14 @@ export default function AdminPage() {
                   {logs.map((row) => {
                     const nickname = row.profiles?.nickname?.trim() || "—";
                     const typeName = row.activity_types?.name ?? "—";
-                    const points = row.activity_types?.base_points ?? 0;
+                    const vibes = row.activity_types?.base_vibes ?? 0;
                     const busy = actingId === row.id;
                     return (
                       <tr key={row.id} className="align-top text-zinc-200">
                         <td className="px-5 py-4 font-medium text-white">{nickname}</td>
                         <td className="px-5 py-4 text-zinc-300">{typeName}</td>
                         <td className="px-5 py-4 tabular-nums text-sync-purple">
-                          +{points}
+                          +{vibes}
                         </td>
                         <td className="max-w-md px-5 py-4 text-zinc-400">
                           <span className="line-clamp-3 whitespace-pre-wrap">
@@ -299,7 +299,7 @@ export default function AdminPage() {
               {logs.map((row) => {
                 const nickname = row.profiles?.nickname?.trim() || "—";
                 const typeName = row.activity_types?.name ?? "—";
-                const points = row.activity_types?.base_points ?? 0;
+                const vibes = row.activity_types?.base_vibes ?? 0;
                 const busy = actingId === row.id;
                 return (
                   <li
@@ -312,7 +312,7 @@ export default function AdminPage() {
                         <p className="mt-1 text-sm text-zinc-400">{typeName}</p>
                       </div>
                       <span className="shrink-0 rounded-full bg-sync-purple/15 px-3 py-1 text-sm font-semibold tabular-nums text-sync-purple">
-                        +{points} pt
+                        +{vibes} V
                       </span>
                     </div>
                     <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">
@@ -374,7 +374,7 @@ export default function AdminPage() {
                   {approvedLogs.map((row) => {
                     const nickname = row.profiles?.nickname?.trim() || "—";
                     const typeName = row.activity_types?.name ?? "—";
-                    const base = row.activity_types?.base_points ?? 0;
+                    const base = row.activity_types?.base_vibes ?? 0;
                     return (
                       <tr key={row.id} className="align-top text-zinc-200">
                         <td className="px-4 py-3 font-medium text-white">{nickname}</td>

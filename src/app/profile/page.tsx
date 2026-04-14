@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
-import { estimatedBonusPoints } from "@/lib/rewards";
+import { estimatedBonusVibes } from "@/lib/rewards";
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
-  const [totalPoints, setTotalPoints] = useState<number | null>(null);
-  const [expectedBonusSum, setExpectedBonusSum] = useState<number | null>(null);
+  const [totalVibes, setTotalVibes] = useState<number | null>(null);
+  const [expectedBonusVibesSum, setExpectedBonusVibesSum] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadProfile = useCallback(async () => {
@@ -23,8 +23,8 @@ export default function ProfilePage() {
 
     if (!user?.id) {
       setLoggedIn(false);
-      setTotalPoints(null);
-      setExpectedBonusSum(null);
+      setTotalVibes(null);
+      setExpectedBonusVibesSum(null);
       setLoading(false);
       return;
     }
@@ -33,23 +33,23 @@ export default function ProfilePage() {
 
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
-      .select("total_points")
+      .select("total_vibes")
       .eq("id", user.id)
       .maybeSingle();
 
     if (profileErr) {
       setLoadError(profileErr.message);
-      setTotalPoints(null);
-      setExpectedBonusSum(null);
+      setTotalVibes(null);
+      setExpectedBonusVibesSum(null);
       setLoading(false);
       return;
     }
 
     const tp =
-      typeof (profile as { total_points?: number } | null)?.total_points === "number"
-        ? (profile as { total_points: number }).total_points
+      typeof (profile as { total_vibes?: number } | null)?.total_vibes === "number"
+        ? (profile as { total_vibes: number }).total_vibes
         : 0;
-    setTotalPoints(tp);
+    setTotalVibes(tp);
 
     const { data: logs, error: qErr } = await supabase
       .from("activity_logs")
@@ -60,7 +60,7 @@ export default function ProfilePage() {
 
     if (qErr) {
       setLoadError(qErr.message);
-      setExpectedBonusSum(null);
+      setExpectedBonusVibesSum(null);
       setLoading(false);
       return;
     }
@@ -71,16 +71,16 @@ export default function ProfilePage() {
       const { count } = await supabase
         .from("activity_syncs")
         .select("*", { count: "exact", head: true })
-        .eq("activity_log_id", row.id);
+        .eq("activity_id", row.id);
 
       const vc =
         typeof row.view_count === "number" && !Number.isNaN(row.view_count)
           ? row.view_count
           : 0;
-      sum += estimatedBonusPoints(count ?? 0, vc);
+      sum += estimatedBonusVibes(count ?? 0, vc);
     }
 
-    setExpectedBonusSum(sum);
+    setExpectedBonusVibesSum(sum);
     setLoading(false);
   }, []);
 
@@ -110,7 +110,7 @@ export default function ProfilePage() {
               onClick={() => void loadProfile()}
               className="shrink-0 rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-fuchsia-400/40 hover:text-white disabled:opacity-50"
             >
-              {loading ? "불러오는 중…" : "포인트 새로고침"}
+              {loading ? "불러오는 중…" : "VIBE 새로고침"}
             </button>
           ) : null}
         </div>
@@ -131,30 +131,30 @@ export default function ProfilePage() {
         {loggedIn ? (
           <>
             <section className="mt-8 rounded-2xl border border-white/10 bg-zinc-900/50 px-5 py-5">
-              <h2 className="text-sm font-semibold text-zinc-300">누적 포인트 (total_points)</h2>
+              <h2 className="text-sm font-semibold text-zinc-300">누적 VIBE (total_vibes)</h2>
               <p className="mt-3 text-3xl font-bold tabular-nums text-white">
-                {loading && totalPoints == null
+                {loading && totalVibes == null
                   ? "…"
-                  : (totalPoints ?? 0).toLocaleString("ko-KR")}
-                <span className="ml-1 text-base font-medium text-zinc-400">pt</span>
+                  : (totalVibes ?? 0).toLocaleString("ko-KR")}
+                <span className="ml-1 text-base font-medium text-zinc-400">V</span>
               </p>
               <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-                승인 시 기본 점수와 주간 정산으로 반영된 가중 보너스가 합산된 값입니다. 정산 직후
-                위의 「포인트 새로고침」으로 최신 값을 확인하세요.
+                승인 시 기본 점수와 주간 정산으로 반영된 가중 보너스 VIBE가 합산된 값입니다.
+                정산 직후 위의 「VIBE 새로고침」으로 최신 값을 확인하세요.
               </p>
             </section>
 
             <section className="mt-6 rounded-2xl border border-fuchsia-500/25 bg-fuchsia-500/5 px-5 py-5">
               <h2 className="text-sm font-semibold text-fuchsia-100">
-                이번 주 획득 예정 포인트
+                이번 주 획득 예정 VIBE
               </h2>
               <p className="mt-3 text-3xl font-bold tabular-nums text-white">
                 {loading
                   ? "…"
-                  : expectedBonusSum != null
-                    ? `+${expectedBonusSum.toLocaleString("ko-KR")}`
+                  : expectedBonusVibesSum != null
+                    ? `+${expectedBonusVibesSum.toLocaleString("ko-KR")}`
                     : "0"}
-                <span className="ml-1 text-base font-medium text-zinc-400">pt</span>
+                <span className="ml-1 text-base font-medium text-zinc-400">V</span>
               </p>
               <p className="mt-3 text-xs leading-relaxed text-zinc-500">
                 승인되었고 아직 정산되지 않은 내 활동의 예상 가중 보너스 합계입니다. (Sync×5 +

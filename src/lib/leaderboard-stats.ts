@@ -56,15 +56,15 @@ export async function fetchUserActivityStatsMap(
     const chunk = logIds.slice(i, i + SYNC_IN_CHUNK);
     const { data: syncs, error: syncErr } = await supabase
       .from("activity_syncs")
-      .select("activity_log_id")
-      .in("activity_log_id", chunk);
+      .select("activity_id")
+      .in("activity_id", chunk);
 
     if (syncErr) {
       break;
     }
     for (const s of syncs ?? []) {
-      const row = s as { activity_log_id: string };
-      const uid = logToUser.get(String(row.activity_log_id));
+      const row = s as { activity_id: string };
+      const uid = logToUser.get(String(row.activity_id));
       if (!uid) continue;
       const st = map.get(uid);
       if (st) st.syncCount += 1;

@@ -9,7 +9,7 @@ type Ctx = { params: Promise<{ id: string }> };
 type ApproveRpcPayload = {
   ok?: boolean;
   error?: string;
-  points_added?: number;
+  vibes_added?: number;
 };
 
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
@@ -80,7 +80,7 @@ export async function POST(_request: Request, context: Ctx) {
 
   const { data: row, error: rowError } = await supabase
     .from("activity_logs")
-    .select("status, activity_types ( base_points )")
+    .select("status, activity_types ( base_vibes )")
     .eq("id", id)
     .maybeSingle();
 
@@ -101,15 +101,15 @@ export async function POST(_request: Request, context: Ctx) {
   }
 
   const at = firstOrNull(
-    row.activity_types as { base_points?: number } | null | undefined
+    row.activity_types as { base_vibes?: number } | null | undefined
   );
-  const pointsAdded =
-    typeof at?.base_points === "number" ? at.base_points : undefined;
+  const vibesAdded =
+    typeof at?.base_vibes === "number" ? at.base_vibes : undefined;
 
   if (row.status === "approved") {
     return NextResponse.json({
       ok: true,
-      points_added: pointsAdded,
+      vibes_added: vibesAdded,
     });
   }
 

@@ -20,7 +20,7 @@ import { formatCalendarDateForDisplay, getUtcWeekStartDateString } from "@/lib/w
 type ProfileRow = {
   id: string;
   nickname: string | null;
-  total_points: number;
+  total_vibes: number;
   avatar_url: string | null;
 };
 
@@ -53,7 +53,7 @@ export default function LeaderboardPage() {
 
   const [meId, setMeId] = useState<string | null>(null);
   const [myRank, setMyRank] = useState<number | null>(null);
-  const [myPoints, setMyPoints] = useState<number | null>(null);
+  const [myVibes, setMyVibes] = useState<number | null>(null);
   const [myName, setMyName] = useState<string | null>(null);
   const [myStats, setMyStats] = useState<UserActivityStats | null>(null);
 
@@ -78,8 +78,8 @@ export default function LeaderboardPage() {
 
         const listRes = await supabase
           .from("profiles")
-          .select("id, nickname, total_points, avatar_url")
-          .order("total_points", { ascending: false })
+          .select("id, nickname, total_vibes, avatar_url")
+          .order("total_vibes", { ascending: false })
           .limit(LIMIT);
 
         if (cancelled) return;
@@ -127,16 +127,16 @@ export default function LeaderboardPage() {
         if (uid) {
           const { data: me, error: meErr } = await supabase
             .from("profiles")
-            .select("total_points, nickname")
+            .select("total_vibes, nickname")
             .eq("id", uid)
             .maybeSingle();
 
           if (!cancelled && !meErr && me) {
             const tp =
-              typeof (me as { total_points?: number }).total_points === "number"
-                ? (me as { total_points: number }).total_points
+              typeof (me as { total_vibes?: number }).total_vibes === "number"
+                ? (me as { total_vibes: number }).total_vibes
                 : 0;
-            setMyPoints(tp);
+            setMyVibes(tp);
             setMyName((me as { nickname?: string | null }).nickname ?? null);
 
             const mySt = statsMap.get(uid) ?? {
@@ -149,7 +149,7 @@ export default function LeaderboardPage() {
             const { count, error: cErr } = await supabase
               .from("profiles")
               .select("*", { count: "exact", head: true })
-              .gt("total_points", tp);
+              .gt("total_vibes", tp);
 
             if (!cancelled && !cErr) {
               setMyRank((count ?? 0) + 1);
@@ -157,13 +157,13 @@ export default function LeaderboardPage() {
               setMyRank(null);
             }
           } else {
-            setMyPoints(null);
+            setMyVibes(null);
             setMyRank(null);
             setMyName(null);
             setMyStats(null);
           }
         } else {
-          setMyPoints(null);
+          setMyVibes(null);
           setMyRank(null);
           setMyName(null);
           setMyStats(null);
@@ -217,7 +217,7 @@ export default function LeaderboardPage() {
             랭킹
           </h1>
           <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500">
-            누적 포인트의 명예와 이번 주 가장 활발한 활동을 함께 확인하세요.
+            누적 VIBE의 명예와 이번 주 가장 활발한 활동을 함께 확인하세요.
           </p>
 
           <div
@@ -255,7 +255,7 @@ export default function LeaderboardPage() {
 
           {showCumulative ? (
             <p className="mx-auto mt-4 max-w-lg text-sm text-zinc-500">
-              누적 포인트 상위 {LIMIT}명 · 승인된 게시글 기준 활동 지표입니다.
+              누적 VIBE 상위 {LIMIT}명 · 승인된 게시글 기준 활동 지표입니다.
             </p>
           ) : (
             <p className="mx-auto mt-4 max-w-lg text-sm text-zinc-500">
@@ -292,7 +292,7 @@ export default function LeaderboardPage() {
                 <PodiumCard
                   rank={1}
                   name={displayName(top3[0]?.nickname)}
-                  points={top3[0]?.total_points}
+                  vibes={top3[0]?.total_vibes}
                   pointsTone="amber"
                   subtitle={top3[0] ? formatStatLine(top3[0]) : undefined}
                   highlight="gold"
@@ -301,7 +301,7 @@ export default function LeaderboardPage() {
                 <PodiumCard
                   rank={2}
                   name={displayName(top3[1]?.nickname)}
-                  points={top3[1]?.total_points}
+                  vibes={top3[1]?.total_vibes}
                   pointsTone="amber"
                   subtitle={top3[1] ? formatStatLine(top3[1]) : undefined}
                   highlight="silver"
@@ -309,7 +309,7 @@ export default function LeaderboardPage() {
                 <PodiumCard
                   rank={3}
                   name={displayName(top3[2]?.nickname)}
-                  points={top3[2]?.total_points}
+                  vibes={top3[2]?.total_vibes}
                   pointsTone="amber"
                   subtitle={top3[2] ? formatStatLine(top3[2]) : undefined}
                   highlight="bronze"
@@ -330,7 +330,7 @@ export default function LeaderboardPage() {
                 <div className="hidden border-b border-white/10 px-3 py-2.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:grid sm:grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_5rem_4rem_4rem] sm:gap-2 sm:px-4 sm:text-xs">
                   <span>#</span>
                   <span>닉네임 · 활동</span>
-                  <span className="text-right">누적 pt</span>
+                  <span className="text-right">누적 V</span>
                   <span className="text-right">게시글</span>
                   <span className="text-right">Sync</span>
                   <span className="text-right">조회</span>
@@ -348,7 +348,7 @@ export default function LeaderboardPage() {
                               {formatStatLine(p)}
                             </p>
                             <p className="mt-1 text-sm tabular-nums text-amber-200/95">
-                              {p.total_points.toLocaleString("ko-KR")} pt
+                              {p.total_vibes.toLocaleString("ko-KR")} V
                             </p>
                           </div>
                         </div>
@@ -361,7 +361,7 @@ export default function LeaderboardPage() {
                             <p className="mt-0.5 text-[11px] text-zinc-500">{formatStatLine(p)}</p>
                           </div>
                           <span className="text-right text-sm tabular-nums text-amber-200/95">
-                            {p.total_points.toLocaleString("ko-KR")}
+                            {p.total_vibes.toLocaleString("ko-KR")}
                           </span>
                           <span className="text-right text-sm tabular-nums text-zinc-300">
                             {p.postCount.toLocaleString("ko-KR")}
@@ -395,7 +395,7 @@ export default function LeaderboardPage() {
                 <PodiumCard
                   rank={1}
                   name={displayName(weeklyTop3[0]?.display_name)}
-                  points={weeklyTop3[0]?.weekly_points}
+                  vibes={weeklyTop3[0]?.weekly_vibes}
                   pointsTone="emerald"
                   subtitle={weeklyTop3[0] ? formatWeeklyActivitySubtitle(weeklyTop3[0]) : undefined}
                   highlight="gold"
@@ -405,7 +405,7 @@ export default function LeaderboardPage() {
                 <PodiumCard
                   rank={2}
                   name={displayName(weeklyTop3[1]?.display_name)}
-                  points={weeklyTop3[1]?.weekly_points}
+                  vibes={weeklyTop3[1]?.weekly_vibes}
                   pointsTone="emerald"
                   subtitle={weeklyTop3[1] ? formatWeeklyActivitySubtitle(weeklyTop3[1]) : undefined}
                   highlight="silver"
@@ -413,7 +413,7 @@ export default function LeaderboardPage() {
                 <PodiumCard
                   rank={3}
                   name={displayName(weeklyTop3[2]?.display_name)}
-                  points={weeklyTop3[2]?.weekly_points}
+                  vibes={weeklyTop3[2]?.weekly_vibes}
                   pointsTone="emerald"
                   subtitle={weeklyTop3[2] ? formatWeeklyActivitySubtitle(weeklyTop3[2]) : undefined}
                   highlight="bronze"
@@ -434,7 +434,7 @@ export default function LeaderboardPage() {
                 <div className="hidden border-b border-white/10 px-3 py-2.5 text-[10px] font-medium uppercase tracking-wide text-zinc-500 sm:grid sm:grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_5rem_4rem_4rem] sm:gap-2 sm:px-4 sm:text-xs">
                   <span>#</span>
                   <span>닉네임 · 활동</span>
-                  <span className="text-right">주간 pt</span>
+                  <span className="text-right">주간 V</span>
                   <span className="text-right">게시글</span>
                   <span className="text-right">Sync</span>
                   <span className="text-right">조회</span>
@@ -452,7 +452,7 @@ export default function LeaderboardPage() {
                               {formatWeeklyActivitySubtitle(p)}
                             </p>
                             <p className="mt-1 text-sm tabular-nums text-emerald-200/95">
-                              {p.weekly_points.toLocaleString("ko-KR")} pt
+                              {p.weekly_vibes.toLocaleString("ko-KR")} V
                             </p>
                           </div>
                         </div>
@@ -467,7 +467,7 @@ export default function LeaderboardPage() {
                             </p>
                           </div>
                           <span className="text-right text-sm tabular-nums text-emerald-200/95">
-                            {p.weekly_points.toLocaleString("ko-KR")}
+                            {p.weekly_vibes.toLocaleString("ko-KR")}
                           </span>
                           <span className="text-right text-sm tabular-nums text-zinc-300">
                             {p.week_post_count.toLocaleString("ko-KR")}
@@ -490,7 +490,7 @@ export default function LeaderboardPage() {
                 </ul>
               </div>
               <p className="mt-3 text-center text-[11px] text-zinc-600">
-                주간 포인트는 승인된 활동의 기본 점수와, 현재까지의 Sync·조회를 반영한 예상 보너스입니다.
+                주간 VIBE는 승인된 활동의 기본 점수와, 현재까지의 Sync·조회를 반영한 예상 보너스입니다.
               </p>
             </section>
           </>
@@ -508,7 +508,7 @@ export default function LeaderboardPage() {
               </Link>
               하고 내 순위를 확인하세요
             </p>
-          ) : tab === "cumulative" && myRank != null && myPoints != null && myStats ? (
+          ) : tab === "cumulative" && myRank != null && myVibes != null && myStats ? (
             <div className="flex items-end justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-zinc-500">
@@ -519,7 +519,7 @@ export default function LeaderboardPage() {
                 </p>
                 <p className="mt-0.5 text-[11px] text-zinc-500">{formatStatLine(myStats)}</p>
                 <p className="mt-1 text-sm tabular-nums text-amber-200">
-                  {myPoints.toLocaleString("ko-KR")} pt
+                  {myVibes.toLocaleString("ko-KR")} V
                 </p>
               </div>
               <div className="shrink-0 text-right">
@@ -546,7 +546,7 @@ export default function LeaderboardPage() {
                     이번 주 Sync {weeklyMyPlace.week_sync_received.toLocaleString("ko-KR")}개 획득
                   </p>
                   <p className="mt-1 text-sm tabular-nums text-emerald-200">
-                    {weeklyMyPlace.weekly_points.toLocaleString("ko-KR")} pt
+                    {weeklyMyPlace.weekly_vibes.toLocaleString("ko-KR")} V
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -588,7 +588,7 @@ function borderClass(highlight: "gold" | "silver" | "bronze") {
 function PodiumCard({
   rank,
   name,
-  points,
+  vibes,
   subtitle,
   highlight,
   emphasized,
@@ -597,14 +597,14 @@ function PodiumCard({
 }: {
   rank: 1 | 2 | 3;
   name: string;
-  points: number | undefined;
+  vibes: number | undefined;
   subtitle?: string;
   highlight: "gold" | "silver" | "bronze";
   emphasized?: boolean;
   pointsTone: "amber" | "emerald";
   emeraldFlare?: boolean;
 }) {
-  const empty = points == null;
+  const empty = vibes == null;
   const isGold = highlight === "gold";
   const ptClass =
     pointsTone === "emerald" ? "text-emerald-200/95" : "text-amber-200/90";
@@ -645,7 +645,7 @@ function PodiumCard({
           {empty ? "—" : name}
         </p>
         <p className={`mt-1 shrink-0 tabular-nums text-xs sm:text-lg ${ptClass}`}>
-          {empty ? "—" : `${points.toLocaleString("ko-KR")} pt`}
+          {empty ? "—" : `${vibes.toLocaleString("ko-KR")} V`}
         </p>
         {!empty && subtitle ? (
           <p className="mt-2.5 w-full max-w-full px-0.5 text-center text-[10px] leading-relaxed text-zinc-400 sm:text-[11px] sm:leading-normal">

@@ -10,7 +10,7 @@ export type PendingLogRow = {
   created_at: string;
   user_id: string;
   profiles: { nickname: string | null } | null;
-  activity_types: { name: string; base_points: number } | null;
+  activity_types: { name: string; base_vibes: number } | null;
 };
 
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
@@ -26,7 +26,7 @@ function normalizePendingRow(row: Record<string, unknown>): PendingLogRow {
     user_id: String(row.user_id),
     profiles: firstOrNull(row.profiles as { nickname: string | null } | null),
     activity_types: firstOrNull(
-      row.activity_types as { name: string; base_points: number } | null
+      row.activity_types as { name: string; base_vibes: number } | null
     ),
   };
 }
@@ -54,7 +54,7 @@ export async function GET() {
       created_at,
       user_id,
       profiles ( nickname ),
-      activity_types ( name, base_points )
+      activity_types ( name, base_vibes )
     `
     )
     .eq("status", "pending")

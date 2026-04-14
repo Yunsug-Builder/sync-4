@@ -46,7 +46,7 @@ export function ActivitySyncControl({
     const { count: c, error: countErr } = await supabase
       .from("activity_syncs")
       .select("*", { count: "exact", head: true })
-      .eq("activity_log_id", activityLogId);
+      .eq("activity_id", activityLogId);
 
     if (!countErr) {
       setCount(c ?? 0);
@@ -56,7 +56,7 @@ export function ActivitySyncControl({
       const { data: row } = await supabase
         .from("activity_syncs")
         .select("id")
-        .eq("activity_log_id", activityLogId)
+        .eq("activity_id", activityLogId)
         .eq("user_id", uid)
         .maybeSingle();
       setSynced(Boolean(row));
@@ -109,7 +109,7 @@ export function ActivitySyncControl({
         const { error } = await supabase
           .from("activity_syncs")
           .delete()
-          .eq("activity_log_id", activityLogId)
+          .eq("activity_id", activityLogId)
           .eq("user_id", user.id);
         if (!error) {
           await loadSyncState();
@@ -117,7 +117,7 @@ export function ActivitySyncControl({
         }
       } else {
         const { error } = await supabase.from("activity_syncs").insert({
-          activity_log_id: activityLogId,
+          activity_id: activityLogId,
           user_id: user.id,
         });
         if (!error) {

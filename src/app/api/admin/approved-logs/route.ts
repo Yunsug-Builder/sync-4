@@ -3,7 +3,7 @@ import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleConfig,
 } from "@/lib/supabase-service";
-import { estimatedBonusPoints } from "@/lib/rewards";
+import { estimatedBonusVibes } from "@/lib/rewards";
 
 export type ApprovedLogRow = {
   id: string;
@@ -15,7 +15,7 @@ export type ApprovedLogRow = {
   sync_count: number;
   estimated_bonus: number;
   profiles: { nickname: string | null } | null;
-  activity_types: { name: string; base_points: number } | null;
+  activity_types: { name: string; base_vibes: number } | null;
 };
 
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
@@ -48,7 +48,7 @@ export async function GET() {
       view_count,
       is_settled,
       profiles ( nickname ),
-      activity_types ( name, base_points )
+      activity_types ( name, base_vibes )
     `
     )
     .eq("status", "approved")
@@ -70,14 +70,14 @@ export async function GET() {
     const { count: syncCount } = await supabase
       .from("activity_syncs")
       .select("*", { count: "exact", head: true })
-      .eq("activity_log_id", id);
+      .eq("activity_id", id);
 
     const vc =
       typeof row.view_count === "number" && !Number.isNaN(row.view_count)
         ? row.view_count
         : 0;
     const sc = syncCount ?? 0;
-    const est = estimatedBonusPoints(sc, vc);
+    const est = estimatedBonusVibes(sc, vc);
 
     logs.push({
       id,
@@ -90,7 +90,7 @@ export async function GET() {
       estimated_bonus: est,
       profiles: firstOrNull(row.profiles as { nickname: string | null } | null),
       activity_types: firstOrNull(
-        row.activity_types as { name: string; base_points: number } | null
+        row.activity_types as { name: string; base_vibes: number } | null
       ),
     });
   }
