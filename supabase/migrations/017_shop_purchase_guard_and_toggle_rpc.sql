@@ -1,4 +1,4 @@
--- 아이템 구매를 처리하는 RPC 함수 (중복 보유 방지 포함)
+-- Harden shop purchase flow and centralize inventory activation toggle.
 CREATE OR REPLACE FUNCTION public.purchase_item(p_item_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -14,29 +14,26 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'error', '로그인이 필요합니다.');
     END IF;
 
-    -- 1. 상품 가격 확인
     SELECT price INTO v_item_price
-    FROM shop_items
+    FROM public.shop_items
     WHERE id = p_item_id;
 
     IF NOT FOUND THEN
         RETURN jsonb_build_object('ok', false, 'error', '상품을 찾을 수 없습니다.');
     END IF;
 
-    -- 2. 중복 구매 차단
     IF EXISTS (
         SELECT 1
-        FROM user_inventory
-        WHERE user_id = v_user_id
-          AND item_id = p_item_id
+        FROM public.user_inventory ui
+        WHERE ui.user_id = v_user_id
+          AND ui.item_id = p_item_id
     ) THEN
         RETURN jsonb_build_object('ok', false, 'error', '이미 보유한 아이템입니다.');
     END IF;
 
-    -- 3. 유저의 현재 바이브 잔액 확인(행 잠금)
-    SELECT total_vibes INTO v_user_vibes
-    FROM profiles
-    WHERE id = v_user_id
+    SELECT p.total_vibes INTO v_user_vibes
+    FROM public.profiles p
+    WHERE p.id = v_user_id
     FOR UPDATE;
 
     IF v_user_vibes IS NULL THEN
@@ -47,23 +44,20 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'error', '바이브가 부족합니다.');
     END IF;
 
-    -- 4. 트랜잭션 처리: 바이브 차감 및 인벤토리 추가
-    -- 바이브 차감
-    UPDATE profiles 
-    SET total_vibes = total_vibes - v_item_price 
+    UPDATE public.profiles
+    SET total_vibes = total_vibes - v_item_price
     WHERE id = v_user_id;
 
-    -- 인벤토리 추가
-    INSERT INTO user_inventory (user_id, item_id)
+    INSERT INTO public.user_inventory (user_id, item_id)
     VALUES (v_user_id, p_item_id);
 
     RETURN jsonb_build_object('ok', true, 'message', '구매가 완료되었습니다.');
-EXCEPTION WHEN OTHERS THEN
-    RETURN jsonb_build_object('ok', false, 'error', '처리 중 오류가 발생했습니다.');
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('ok', false, 'error', '처리 중 오류가 발생했습니다.');
 END;
 $$;
 
--- 인벤토리 아이템 적용/해제 토글 RPC
 CREATE OR REPLACE FUNCTION public.toggle_item_active(p_inventory_id uuid)
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -83,8 +77,8 @@ BEGIN
 
     SELECT ui.item_id, COALESCE(ui.is_active, false), si.category
     INTO v_item_id, v_current_active, v_category
-    FROM user_inventory ui
-    JOIN shop_items si ON si.id = ui.item_id
+    FROM public.user_inventory ui
+    JOIN public.shop_items si ON si.id = ui.item_id
     WHERE ui.id = p_inventory_id
       AND ui.user_id = v_user_id
     FOR UPDATE;
@@ -99,17 +93,16 @@ BEGIN
 
     v_next_active := NOT v_current_active;
 
-    -- 활성화 시, 같은 카테고리 아이템 모두 비활성화 후 대상만 활성화
     IF v_next_active THEN
-        UPDATE user_inventory ui
+        UPDATE public.user_inventory ui
         SET is_active = false
-        FROM shop_items si
+        FROM public.shop_items si
         WHERE ui.user_id = v_user_id
           AND ui.item_id = si.id
           AND si.category = v_category;
     END IF;
 
-    UPDATE user_inventory
+    UPDATE public.user_inventory
     SET is_active = v_next_active
     WHERE id = p_inventory_id
       AND user_id = v_user_id;
@@ -122,7 +115,8 @@ BEGIN
             ELSE '아이템 적용을 해제했습니다.'
         END
     );
-EXCEPTION WHEN OTHERS THEN
-    RETURN jsonb_build_object('ok', false, 'error', '처리 중 오류가 발생했습니다.');
+EXCEPTION
+    WHEN OTHERS THEN
+        RETURN jsonb_build_object('ok', false, 'error', '처리 중 오류가 발생했습니다.');
 END;
 $$;

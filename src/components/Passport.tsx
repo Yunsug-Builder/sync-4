@@ -6,6 +6,12 @@ type Stamp = {
   visited: boolean;
 };
 
+export type ActiveInventoryItem = {
+  id: string;
+  name: string;
+  category: string | null;
+};
+
 const stampIcons: Array<{
   bgFrom: string;
   bgTo: string;
@@ -274,13 +280,26 @@ export default function Passport({
   artistName,
   levelTitle,
   stamps,
+  avatarUrl,
+  activeItems = [],
 }: {
   artistName: string;
   levelTitle: string;
   stamps: Stamp[];
+  avatarUrl?: string | null;
+  activeItems?: ActiveInventoryItem[];
 }) {
   const stampsSafe = stamps.slice(0, 9);
   const visitedCount = stampsSafe.filter((s) => s.visited).length;
+  const borderItem = activeItems.find((item) => item.category === "border");
+  const titleItem = activeItems.find((item) => item.category === "title");
+
+  const borderTone =
+    borderItem?.name === "네온 핑크"
+      ? "border-pink-500 shadow-[0_0_28px_rgba(236,72,153,0.45)]"
+      : borderItem?.name === "SYNC 퍼플"
+        ? "border-sync-purple shadow-[0_0_28px_rgba(139,92,246,0.45)]"
+        : "border-white/20 shadow-[0_0_18px_rgba(139,92,246,0.24)]";
 
   return (
     <section
@@ -290,16 +309,42 @@ export default function Passport({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-medium tracking-widest text-fuchsia-300">DIGITAL PASSPORT</p>
+          <p className="text-xs font-medium tracking-widest text-sync-purple">DIGITAL PASSPORT</p>
+          {titleItem ? (
+            <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.18em] text-sync-purple/85">
+              {titleItem.name}
+            </p>
+          ) : null}
           <h2 className="mt-1 text-xl font-semibold tracking-tight">{artistName}</h2>
           <p className="mt-1 text-sm text-zinc-300">{levelTitle}</p>
         </div>
 
-        <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-right">
-          <p className="text-[11px] text-zinc-400">완료</p>
-          <p className="text-lg font-semibold text-emerald-200">
-            {visitedCount}/9
-          </p>
+        <div className="flex items-start gap-3">
+          <div
+            className={`relative h-14 w-14 overflow-hidden rounded-2xl border-2 bg-zinc-900/70 ${borderTone} transition-shadow duration-500 ${
+              borderItem ? "animate-pulse" : ""
+            }`}
+          >
+            {avatarUrl?.trim() ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={avatarUrl}
+                alt={`${artistName} avatar`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+              />
+            ) : (
+              <div className="grid h-full w-full place-items-center text-lg font-semibold text-zinc-200">
+                {artistName.slice(0, 1)}
+              </div>
+            )}
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/30 px-3 py-2 text-right">
+            <p className="text-[11px] text-zinc-400">완료</p>
+            <p className="text-lg font-semibold text-emerald-200">
+              {visitedCount}/9
+            </p>
+          </div>
         </div>
       </div>
 

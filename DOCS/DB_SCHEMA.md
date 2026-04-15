@@ -119,3 +119,19 @@
 | item_id | uuid | N | Y |
 | is_active | boolean | N | Y |
 | purchased_at | timestamp with time zone | N | Y |
+
+### 제약/인덱스 (최신 반영)
+
+- `ux_user_inventory_user_item` (UNIQUE INDEX on `user_inventory(user_id, item_id)`)
+  - 동일 유저의 동일 아이템 중복 보유를 DB 레벨에서 차단합니다.
+
+---
+
+## Shop/Inventory 동작 관련 최신 변경사항
+
+- `purchase_item(p_item_id uuid)`:
+  - 이미 보유한 아이템 구매 시 `ok=false`와 에러 메시지를 반환하도록 강화됨
+- `toggle_item_active(p_inventory_id uuid)`:
+  - 장착 토글을 RPC로 일원화
+  - `true`로 활성화할 때 동일 카테고리 아이템은 자동 `false` 처리
+  - 단일 함수 트랜잭션 내에서 처리

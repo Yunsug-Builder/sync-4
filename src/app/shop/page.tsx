@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { InventoryItemRow } from "@/components/inventory/InventoryItemRow";
+import { ShopItemCard } from "@/components/shop/ShopItemCard";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 type ShopItem = {
@@ -21,11 +23,6 @@ type InventoryRow = {
   purchased_at: string;
   shop_items: ShopItem | ShopItem[] | null;
 };
-
-function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
-  if (v == null) return null;
-  return Array.isArray(v) ? (v[0] ?? null) : v;
-}
 
 export default function ShopPage() {
   const [loading, setLoading] = useState(true);
@@ -135,8 +132,9 @@ export default function ShopPage() {
       setBuyingId(null);
 
       if (rpcErr) {
-        setError(rpcErr.message);
-        toast.error(rpcErr.message);
+        const msg = rpcErr.message || "구매 처리 중 오류가 발생했습니다.";
+        setError(msg);
+        toast.error(msg);
         return;
       }
 
@@ -162,66 +160,41 @@ export default function ShopPage() {
   const onActivate = useCallback(
     async (row: InventoryRow) => {
       const supabase = getSupabaseBrowserClient();
-      const item = firstOrNull(row.shop_items);
-      const category = item?.category ?? null;
-      if (!category) {
-        setError("카테고리 없는 아이템은 적용할 수 없습니다.");
-        return;
-      }
-
       setActivatingId(row.id);
       setError(null);
 
-      if (row.is_active) {
-        const { error: offErr } = await supabase
-          .from("user_inventory")
-          .update({ is_active: false })
-          .eq("id", row.id);
-        setActivatingId(null);
-        if (offErr) {
-          setError(offErr.message);
-          toast.error(offErr.message);
-          return;
-        }
-        toast.success("아이템 적용을 해제했습니다.");
-        await loadAll();
-        return;
-      }
-
-      // 같은 카테고리의 기존 활성 아이템을 해제 후, 선택 아이템을 활성화합니다.
-      const sameCategoryInventoryIds = inventory
-        .filter((inv) => firstOrNull(inv.shop_items)?.category === category)
-        .map((inv) => inv.id);
-
-      if (sameCategoryInventoryIds.length > 0) {
-        const { error: offErr } = await supabase
-          .from("user_inventory")
-          .update({ is_active: false })
-          .in("id", sameCategoryInventoryIds);
-        if (offErr) {
-          setActivatingId(null);
-          setError(offErr.message);
-          toast.error(offErr.message);
-          return;
-        }
-      }
-
-      const { error: onErr } = await supabase
-        .from("user_inventory")
-        .update({ is_active: true })
-        .eq("id", row.id);
-
+      const { data, error: rpcErr } = await supabase.rpc("toggle_item_active", {
+        p_inventory_id: row.id,
+      });
       setActivatingId(null);
-
-      if (onErr) {
-        setError(onErr.message);
-        toast.error(onErr.message);
+      if (rpcErr) {
+        const msg = rpcErr.message || "적용 상태 변경 중 오류가 발생했습니다.";
+        setError(msg);
+        toast.error(msg);
         return;
       }
-      toast.success("아이템을 프로필에 적용했습니다.");
+
+      const payload =
+        data && typeof data === "object" && !Array.isArray(data)
+          ? (data as Record<string, unknown>)
+          : null;
+      if (payload && payload.ok === false) {
+        const msg = typeof payload.error === "string" ? payload.error : "toggle_failed";
+        setError(msg);
+        toast.error(msg);
+        return;
+      }
+
+      const successMsg =
+        payload && typeof payload.message === "string"
+          ? payload.message
+          : row.is_active
+            ? "아이템 적용을 해제했습니다."
+            : "아이템을 프로필에 적용했습니다.";
+      toast.success(successMsg);
       await loadAll();
     },
-    [inventory, loadAll]
+    [loadAll]
   );
 
   return (
@@ -240,7 +213,7 @@ export default function ShopPage() {
         </div>
 
         <header className="mt-6">
-          <p className="text-xs font-medium uppercase tracking-[0.25em] text-fuchsia-300/90">
+          <p className="text-xs font-medium uppercase tracking-[0.25em] text-sync-purple/90">
             Shop
           </p>
           <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">VIBE 상점</h1>
@@ -249,7 +222,7 @@ export default function ShopPage() {
           </p>
           <p className="mt-4 text-sm text-zinc-300">
             보유 VIBE:{" "}
-            <span className="font-semibold tabular-nums text-fuchsia-200">
+            <span className="font-semibold tabular-nums text-sync-purple">
               {loggedIn ? totalVibes.toLocaleString("ko-KR") : "로그인 필요"} VIBE
             </span>
           </p>
@@ -272,37 +245,16 @@ export default function ShopPage() {
               {items.map((item) => {
                 const owned = ownedItemIds.has(item.id);
                 const cannotAfford = loggedIn && totalVibes < item.price;
-                const disabled = !loggedIn || owned || cannotAfford || buyingId === item.id;
                 return (
-                  <li
+                  <ShopItemCard
                     key={item.id}
-                    className="rounded-2xl border border-white/10 bg-zinc-900/50 p-4"
-                  >
-                    <p className="text-xs text-zinc-500">{item.category ?? "기타"}</p>
-                    <p className="mt-1 text-lg font-semibold text-white">{item.name}</p>
-                    <p className="mt-2 line-clamp-3 text-sm text-zinc-400">
-                      {item.description?.trim() || "설명 없음"}
-                    </p>
-                    <p className="mt-4 text-base font-semibold tabular-nums text-fuchsia-200">
-                      {item.price.toLocaleString("ko-KR")} VIBE
-                    </p>
-                    <button
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => void onBuy(item.id)}
-                      className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-xl border border-white/15 text-sm font-medium text-zinc-200 transition hover:border-fuchsia-400/45 hover:text-white disabled:opacity-50"
-                    >
-                      {!loggedIn
-                        ? "로그인 필요"
-                        : owned
-                          ? "보유 중"
-                          : cannotAfford
-                            ? "VIBE 부족"
-                            : buyingId === item.id
-                              ? "구매 중…"
-                              : "구매"}
-                    </button>
-                  </li>
+                    item={item}
+                    loggedIn={loggedIn}
+                    owned={owned}
+                    cannotAfford={cannotAfford}
+                    buying={buyingId === item.id}
+                    onBuy={onBuy}
+                  />
                 );
               })}
             </ul>
@@ -321,40 +273,15 @@ export default function ShopPage() {
             <p className="mt-4 text-sm text-zinc-500">아직 구매한 아이템이 없습니다.</p>
           ) : (
             <ul className="mt-4 space-y-3">
-              {inventory.map((row) => {
-                const item = firstOrNull(row.shop_items);
-                const active = Boolean(row.is_active);
-                return (
-                  <li
-                    key={row.id}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-zinc-900/40 px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm text-zinc-500">{item?.category ?? "기타"}</p>
-                      <p className="text-base font-semibold text-white">{item?.name ?? "아이템"}</p>
-                      <p className="text-xs text-zinc-500">
-                        구매일{" "}
-                        {new Date(row.purchased_at).toLocaleString("ko-KR", {
-                          dateStyle: "medium",
-                          timeStyle: "short",
-                        })}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={active || activatingId === row.id}
-                      onClick={() => void onActivate(row)}
-                      className={`rounded-xl px-3 py-1.5 text-sm font-medium transition ${
-                        active
-                          ? "border border-emerald-400/35 bg-emerald-500/10 text-emerald-100"
-                          : "border border-white/15 text-zinc-200 hover:border-fuchsia-400/45 hover:text-white"
-                      } disabled:opacity-60`}
-                    >
-                      {active ? "적용 중" : activatingId === row.id ? "적용 중…" : "프로필 적용"}
-                    </button>
-                  </li>
-                );
-              })}
+              {inventory.map((row) => (
+                <InventoryItemRow
+                  key={row.id}
+                  row={row}
+                  acting={activatingId === row.id}
+                  showPrice={false}
+                  onToggle={onActivate}
+                />
+              ))}
             </ul>
           )}
           <p className="mt-3 text-xs text-zinc-600">
