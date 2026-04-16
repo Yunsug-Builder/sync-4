@@ -130,8 +130,15 @@
 ## Shop/Inventory 동작 관련 최신 변경사항
 
 - `purchase_item(p_item_id uuid)`:
-  - 이미 보유한 아이템 구매 시 `ok=false`와 에러 메시지를 반환하도록 강화됨
+  - `auth.uid()` 기준으로 현재 로그인 유저만 구매 가능
+  - `shop_items.price` 조회 후, `profiles.total_vibes`를 `FOR UPDATE`로 잠그고 잔액 검증
+  - 이미 보유한 아이템 구매 시 `ok=false`와 에러 메시지를 반환
+  - 성공 시 `profiles.total_vibes` 차감 후 `user_inventory(user_id, item_id)`에 새 row 생성
+  - 반환값은 `jsonb`이며 기본 형태는 `ok`, `message|error`
 - `toggle_item_active(p_inventory_id uuid)`:
-  - 장착 토글을 RPC로 일원화
-  - `true`로 활성화할 때 동일 카테고리 아이템은 자동 `false` 처리
-  - 단일 함수 트랜잭션 내에서 처리
+  - 장착/해제 토글을 RPC로 일원화
+  - 파라미터는 `shop_items.id`가 아니라 `user_inventory.id`
+  - `auth.uid()` 기준으로 본인 인벤토리 row만 수정 가능
+  - `true`로 활성화할 때 동일 `shop_items.category`의 다른 장착 아이템은 자동 `false` 처리
+  - 카테고리가 없는 아이템은 적용 불가
+  - 반환값은 `jsonb`이며 기본 형태는 `ok`, `is_active`, `message|error`

@@ -12,6 +12,7 @@ export type PostBreakdown = {
   id: string;
   contentPreview: string;
   activityName: string;
+  thumbnailUrl: string | null;
   viewCount: number;
   syncCount: number;
   syncVibes: number;
@@ -24,6 +25,7 @@ export function buildPostBreakdown(
   log: {
     id: string;
     content: string | null;
+    proof_url?: string | null;
     view_count?: number | null;
     created_at: string;
     activity_types: { name: string | null } | null;
@@ -41,6 +43,10 @@ export function buildPostBreakdown(
   const raw = log.content?.trim() ?? "";
   const contentPreview =
     raw.length > 120 ? `${raw.slice(0, 120)}…` : raw || "내용 없음";
+  const proof =
+    typeof log.proof_url === "string" && log.proof_url.trim().length > 0
+      ? log.proof_url.trim()
+      : null;
 
   const at = log.activity_types;
   const name =
@@ -51,6 +57,7 @@ export function buildPostBreakdown(
     id: log.id,
     contentPreview,
     activityName: name || "활동",
+    thumbnailUrl: proof,
     viewCount: views,
     syncCount: sync,
     syncVibes,

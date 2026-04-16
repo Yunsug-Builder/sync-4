@@ -21,7 +21,6 @@ import {
   formatCalendarDateForDisplay,
   formatTimestampForDisplay,
   getUtcWeekRangeIso,
-  getUtcWeekStartDateString,
 } from "@/lib/week-utils";
 
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
@@ -60,6 +59,7 @@ export default function SettlementsPage() {
           `
           id,
           content,
+          proof_url,
           view_count,
           created_at,
           activity_types ( name )
@@ -76,20 +76,27 @@ export default function SettlementsPage() {
         return [];
       }
 
+      const ids = logs.map((v) => String((v as { id: string }).id));
+      const { data: syncRows } = await supabase
+        .from("activity_syncs")
+        .select("activity_id")
+        .in("activity_id", ids);
+      const syncCountByActivityId = new Map<string, number>();
+      for (const row of syncRows ?? []) {
+        const aid = String((row as { activity_id: string }).activity_id);
+        syncCountByActivityId.set(aid, (syncCountByActivityId.get(aid) ?? 0) + 1);
+      }
+
       const out: PostBreakdown[] = [];
       for (const raw of logs) {
         const log = raw as {
           id: string;
           content: string | null;
+          proof_url?: string | null;
           view_count?: number | null;
           created_at: string;
           activity_types: unknown;
         };
-        const { count } = await supabase
-          .from("activity_syncs")
-          .select("*", { count: "exact", head: true })
-          .eq("activity_id", log.id);
-
         const at = firstOrNull(
           log.activity_types as { name: string | null } | null
         );
@@ -98,11 +105,12 @@ export default function SettlementsPage() {
             {
               id: log.id,
               content: log.content,
+              proof_url: log.proof_url,
               view_count: log.view_count,
               created_at: log.created_at,
               activity_types: at,
             },
-            count ?? 0
+            syncCountByActivityId.get(log.id) ?? 0
           )
         );
       }
@@ -151,30 +159,31 @@ export default function SettlementsPage() {
       if (qErr) {
         setError(qErr.message);
         setRows([]);
+        setHeroPosts([]);
       } else {
         const list = (data ?? []) as Record<string, unknown>[];
-        setRows(
-          list.map((r) => {
-            const rawWeek = r[wkCol];
-            const weekStart =
-              rawWeek == null ? "" : String(rawWeek).trim();
-            const rawCreated = r.created_at;
-            const createdAt =
-              rawCreated == null ? "" : String(rawCreated);
-            return {
-              id: String(r.id),
-              week_start: weekStart,
-              bonus_vibes: Number(r[bpCol] ?? 0),
-              created_at: createdAt,
-            };
-          })
-        );
-      }
-
-      const weekStart = getUtcWeekStartDateString(new Date());
-      const posts = await loadPostsForWeek(user.id, weekStart);
-      if (!cancelled) {
-        setHeroPosts(posts);
+        const parsedRows = list.map((r) => {
+          const rawWeek = r[wkCol];
+          const weekStart =
+            rawWeek == null ? "" : String(rawWeek).trim();
+          const rawCreated = r.created_at;
+          const createdAt =
+            rawCreated == null ? "" : String(rawCreated);
+          return {
+            id: String(r.id),
+            week_start: weekStart,
+            bonus_vibes: Number(r[bpCol] ?? 0),
+            created_at: createdAt,
+          };
+        });
+        setRows(parsedRows);
+        const latestWeek = parsedRows[0]?.week_start?.trim();
+        const posts = latestWeek
+          ? await loadPostsForWeek(user.id, latestWeek)
+          : [];
+        if (!cancelled) {
+          setHeroPosts(posts);
+        }
       }
       setLoading(false);
     })();
@@ -184,17 +193,34 @@ export default function SettlementsPage() {
     };
   }, [wkCol, bpCol, loadPostsForWeek]);
 
-  const currentWeekStart = useMemo(() => getUtcWeekStartDateString(new Date()), []);
-
-  const currentWeekSettlement = useMemo(
-    () => rows.find((r) => r.week_start === currentWeekStart),
-    [rows, currentWeekStart]
-  );
+  const latestSettlement = useMemo(() => rows[0] ?? null, [rows]);
 
   const heroParts = useMemo(
     () => sumBreakdownParts(heroPosts ?? []),
     [heroPosts]
   );
+  const heroKpis = useMemo(() => {
+    const list = heroPosts ?? [];
+    let totalSyncs = 0;
+    let totalViews = 0;
+    for (const p of list) {
+      totalSyncs += p.syncCount;
+      totalViews += p.viewCount;
+    }
+    return {
+      totalPosts: list.length,
+      totalSyncs,
+      totalViews,
+    };
+  }, [heroPosts]);
+  const heroContributionRatio = useMemo(() => {
+    const total = heroParts.total;
+    if (total <= 0) return { syncPct: 0, viewPct: 0 };
+    return {
+      syncPct: Math.round((heroParts.syncVibes / total) * 100),
+      viewPct: Math.max(0, 100 - Math.round((heroParts.syncVibes / total) * 100)),
+    };
+  }, [heroParts]);
 
   const renderFormulaLines = (p: PostBreakdown) => (
     <div className="mt-2 space-y-1.5 text-[11px] text-zinc-500">
@@ -242,12 +268,23 @@ export default function SettlementsPage() {
         className="rounded-xl border border-white/[0.06] bg-zinc-950/50 px-3 py-3 sm:px-4"
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-emerald-500/90">{p.activityName}</p>
             <p className="mt-1 text-sm text-zinc-200">{p.contentPreview}</p>
           </div>
+          {p.thumbnailUrl ? (
+            <div className="shrink-0 overflow-hidden rounded-lg border border-white/15 bg-black/30">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={p.thumbnailUrl}
+                alt="활동 썸네일"
+                className="h-14 w-14 object-cover"
+                loading="lazy"
+              />
+            </div>
+          ) : null}
           {bestId === p.id ? (
-            <span className="shrink-0 rounded-full border border-amber-400/35 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100">
+            <span className="shrink-0 rounded-full border border-amber-300/60 bg-gradient-to-r from-amber-400/25 to-yellow-300/20 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100 shadow-[0_0_14px_rgba(251,191,36,0.45)]">
               Best Contributor
             </span>
           ) : null}
@@ -320,11 +357,13 @@ export default function SettlementsPage() {
             <section className="mt-10 overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-950/80 via-[#0f1419] to-zinc-950 shadow-[0_0_0_1px_rgba(16,185,129,0.06)]">
               <div className="border-b border-white/5 px-5 py-4 sm:px-6">
                 <p className="text-xs font-medium uppercase tracking-wide text-emerald-400/90">
-                  이번 주 (UTC 기준 주 시작{" "}
-                  {formatCalendarDateForDisplay(currentWeekStart)})
+                  최근 완료 정산 주차{" "}
+                  {latestSettlement
+                    ? `(UTC 기준 주 시작 ${formatCalendarDateForDisplay(latestSettlement.week_start)})`
+                    : ""}
                 </p>
                 <p className="mt-1 text-sm text-zinc-500">
-                  확정 정산액은 DB 기준이며, 아래는 동일 주차 게시글에서 역산한 구성입니다.
+                  유저가 가장 최근에 받은 확정 보상을 먼저 보여줍니다.
                 </p>
               </div>
               <div className="px-5 py-6 sm:px-6">
@@ -332,17 +371,38 @@ export default function SettlementsPage() {
                   <p className="text-sm text-zinc-500">집계 중…</p>
                 ) : (
                   <>
-                    <p className="text-xs text-zinc-500">이번 주 확정 총 보너스 VIBE</p>
+                    <p className="text-xs text-zinc-500">최근 정산 확정 총 보너스 VIBE</p>
                     <p className="mt-2 text-4xl font-semibold tabular-nums tracking-tight text-white">
                       +
-                      {(currentWeekSettlement?.bonus_vibes ?? 0).toLocaleString("ko-KR")}
+                      {(latestSettlement?.bonus_vibes ?? 0).toLocaleString("ko-KR")}
                       <span className="ml-1.5 text-lg font-medium text-zinc-400">V</span>
                     </p>
-                    {!currentWeekSettlement ? (
+                    {!latestSettlement ? (
                       <p className="mt-3 text-xs text-amber-200/80">
-                        이번 주에 확정된 정산 레코드가 없습니다. (정산 배치 후 반영됩니다.)
+                        아직 확정된 정산 레코드가 없습니다. (정산 배치 후 반영됩니다.)
                       </p>
                     ) : null}
+
+                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                        <p className="text-xs font-medium text-zinc-500">총 게시글 수</p>
+                        <p className="mt-1 text-xl font-semibold tabular-nums text-white">
+                          {heroKpis.totalPosts.toLocaleString("ko-KR")}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                        <p className="text-xs font-medium text-zinc-500">총 Sync 수</p>
+                        <p className="mt-1 text-xl font-semibold tabular-nums text-emerald-200">
+                          {heroKpis.totalSyncs.toLocaleString("ko-KR")}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                        <p className="text-xs font-medium text-zinc-500">총 조회수</p>
+                        <p className="mt-1 text-xl font-semibold tabular-nums text-sky-200">
+                          {heroKpis.totalViews.toLocaleString("ko-KR")}
+                        </p>
+                      </div>
+                    </div>
 
                     <div className="mt-8 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl border border-white/10 bg-black/20 px-4 py-3">
@@ -366,10 +426,24 @@ export default function SettlementsPage() {
                         </p>
                       </div>
                     </div>
+                    <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-4 py-3">
+                      <p className="text-xs font-medium text-zinc-500">
+                        기여 비율 (Sync vs 조회)
+                      </p>
+                      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400"
+                          style={{ width: `${heroContributionRatio.syncPct}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-[11px] text-zinc-500">
+                        Sync {heroContributionRatio.syncPct}% · 조회 {heroContributionRatio.viewPct}%
+                      </p>
+                    </div>
 
                     {heroPosts !== null &&
-                    currentWeekSettlement &&
-                    heroParts.total !== currentWeekSettlement.bonus_vibes ? (
+                    latestSettlement &&
+                    heroParts.total !== latestSettlement.bonus_vibes ? (
                       <p className="mt-4 text-[11px] text-amber-200/70">
                         참고: 역산 합({heroParts.total}V)과 확정액이 다를 수 있습니다. (다른 주차
                         데이터 혼입·반올림 등)
