@@ -4,14 +4,20 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
+import { FeedCard } from "@/components/home/FeedCard";
+import { useLanguage } from "@/components/providers/LanguageProvider";
 
 type FeedRowRaw = {
   id: string;
   content: string;
+  translations?: Record<string, string> | null;
   proof_url: string | null;
+  image_url?: string | null;
   created_at: string;
   artist_id: string;
+  total_reward_vibes?: number | null;
   is_settled?: boolean | null;
+  activity_syncs?: Array<{ count: number | null }> | null;
   profiles: unknown;
   activity_types: unknown;
 };
@@ -19,11 +25,24 @@ type FeedRowRaw = {
 type FeedEntry = {
   id: string;
   content: string;
+  translations: Record<string, string> | null;
   proof_url: string | null;
+  image_url: string | null;
   created_at: string;
-  nickname: string;
   activityName: string;
-  isSettled: boolean;
+  reward_vibes: number;
+  sync_count: number;
+};
+
+type Artist = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  created_at: string;
+  fandom_name: string | null;
+  description: string | null;
+  archive_guide: string | null;
+  sync_strategy: string | null;
 };
 
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
@@ -32,25 +51,29 @@ function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
 }
 
 function normalizeFeedRow(row: FeedRowRaw): FeedEntry {
-  const prof = firstOrNull(row.profiles as { nickname: string | null } | null);
   const at = firstOrNull(row.activity_types as { name: string } | null);
   return {
     id: row.id,
     content: row.content,
+    translations: row.translations ?? null,
     proof_url: row.proof_url,
+    image_url: row.image_url ?? null,
     created_at: row.created_at,
-    nickname: prof?.nickname?.trim() || "익명",
     activityName: at?.name?.trim() || "활동",
-    isSettled: Boolean(row.is_settled),
+    reward_vibes: Math.max(0, Number(row.total_reward_vibes ?? 0)),
+    sync_count: Math.max(0, Number(firstOrNull(row.activity_syncs)?.count ?? 0)),
   };
 }
 
 export default function HomeClient() {
+  const { language: preferredLanguage } = useLanguage();
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<{ nickname: string | null; total_vibes: number } | null>(
     null
   );
   const [entries, setEntries] = useState<FeedEntry[]>([]);
+  const [artists, setArtists] = useState<Artist[]>([]);
+  const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingFeed, setLoadingFeed] = useState(true);
 
@@ -99,46 +122,55 @@ export default function HomeClient() {
       });
   }, [session?.user?.id]);
 
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    void supabase
+      .from("artists")
+      .select(
+        "id, name, image_url, created_at, fandom_name, description, archive_guide, sync_strategy"
+      )
+      .order("name", { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          setLoadError(error.message);
+          setArtists([]);
+          return;
+        }
+        setArtists(((data ?? []) as Artist[]).filter((a) => a.id && a.name));
+      });
+  }, []);
+
   const loadFeed = useCallback(async () => {
     setLoadingFeed(true);
     setLoadError(null);
 
     const supabase = getSupabaseBrowserClient();
 
-    const btsRes = await supabase.from("artists").select("id").eq("name", "BTS").limit(1).maybeSingle();
-
-    if (btsRes.error) {
-      setLoadError(btsRes.error.message);
-      setEntries([]);
-      setLoadingFeed(false);
-      return;
-    }
-
-    const btsId = btsRes.data?.id as string | undefined;
-    if (!btsId) {
-      setLoadError("BTS 아티스트 정보를 찾을 수 없습니다.");
-      setEntries([]);
-      setLoadingFeed(false);
-      return;
-    }
-
-    const { data, error } = await supabase
+    let query = supabase
       .from("activity_logs")
       .select(
         `
         id,
         content,
+        translations,
         proof_url,
+        image_url,
         created_at,
         artist_id,
-        is_settled,
+        total_reward_vibes,
+        activity_syncs ( count ),
         profiles ( nickname ),
         activity_types ( name )
       `
       )
       .eq("status", "approved")
-      .eq("artist_id", btsId)
       .order("created_at", { ascending: false });
+
+    if (selectedArtistId) {
+      query = query.eq("artist_id", selectedArtistId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       setLoadError(error.message);
@@ -150,7 +182,7 @@ export default function HomeClient() {
     const rows = (data ?? []) as FeedRowRaw[];
     setEntries(rows.map(normalizeFeedRow));
     setLoadingFeed(false);
-  }, []);
+  }, [selectedArtistId]);
 
   useEffect(() => {
     void loadFeed();
@@ -205,6 +237,39 @@ export default function HomeClient() {
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-10">
+        <nav className="mb-6 overflow-x-auto pb-1" aria-label="아티스트 필터">
+          <div className="flex min-w-max items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedArtistId(null)}
+              className={`rounded-full border px-4 py-2 text-sm transition ${
+                selectedArtistId === null
+                  ? "border-fuchsia-600/50 bg-fuchsia-600/20 text-fuchsia-100"
+                  : "border-white/15 bg-zinc-900/60 text-zinc-300 hover:border-white/25"
+              }`}
+            >
+              전체
+            </button>
+            {artists.map((artist) => {
+              const active = selectedArtistId === artist.id;
+              return (
+                <button
+                  key={artist.id}
+                  type="button"
+                  onClick={() => setSelectedArtistId(artist.id)}
+                  className={`rounded-full border px-4 py-2 text-sm transition ${
+                    active
+                      ? "border-fuchsia-600/50 bg-fuchsia-600/20 text-fuchsia-100"
+                      : "border-white/15 bg-zinc-900/60 text-zinc-300 hover:border-white/25"
+                  }`}
+                >
+                  {artist.name}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
         {loadError ? (
           <div
             className="rounded-2xl border border-red-400/30 bg-red-500/10 p-5 text-sm text-red-100"
@@ -224,57 +289,12 @@ export default function HomeClient() {
         ) : (
           <ul className="space-y-5">
             {entries.map((entry) => {
-              const detailHref = `/activities/${encodeURIComponent(entry.id)}`;
-              const proofTrimmed = entry.proof_url?.trim() ?? "";
-              const hasProof = proofTrimmed.length > 0;
-
               return (
-                <li key={entry.id} className="relative">
-                  <Link
-                    href={detailHref}
-                    className="absolute inset-0 z-0 rounded-2xl outline-offset-2 ring-offset-zinc-950 focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-fuchsia-400/50"
-                  >
-                    <span className="sr-only">{entry.activityName} 인증 상세 보기</span>
-                  </Link>
-                  <article className="pointer-events-none relative z-[1] overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/55 shadow-[0_12px_40px_rgba(0,0,0,0.35)]">
-                    <div className="border-b border-white/5 px-5 py-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-baseline gap-2">
-                          <p className="font-semibold text-white">{entry.nickname}</p>
-                          <span className="rounded-full border border-fuchsia-400/25 bg-fuchsia-500/10 px-3 py-0.5 text-xs font-medium text-fuchsia-100">
-                            {entry.activityName}
-                          </span>
-                        </div>
-                        <span
-                          className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${
-                            entry.isSettled
-                              ? "border-zinc-500/40 bg-zinc-800/80 text-zinc-400"
-                              : "border-amber-400/35 bg-amber-500/10 text-amber-100"
-                          }`}
-                        >
-                          {entry.isSettled ? "정산 완료" : "정산 예정"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="px-5 py-5">
-                      <p className="line-clamp-4 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">
-                        {entry.content}
-                      </p>
-                    </div>
-                    {hasProof ? (
-                      <div className="pointer-events-auto border-t border-white/5 px-5 py-4">
-                        <a
-                          href={proofTrimmed}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="relative z-[2] inline-flex h-10 items-center justify-center rounded-xl border border-white/15 px-4 text-sm font-medium text-zinc-200 transition hover:border-fuchsia-400/40 hover:text-white"
-                        >
-                          원문 보러가기
-                        </a>
-                      </div>
-                    ) : null}
-                  </article>
-                </li>
+                <FeedCard
+                  key={entry.id}
+                  entry={entry}
+                  preferredLanguage={preferredLanguage}
+                />
               );
             })}
           </ul>

@@ -6,12 +6,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityCommentsSection } from "@/components/activities/ActivityCommentsSection";
 import { ActivityRewardSection } from "@/components/activities/ActivityRewardSection";
 import { ActivitySyncControl } from "@/components/activities/ActivitySyncControl";
+import type { LanguageCode } from "@/components/home/FeedCard";
+import { useLanguage } from "@/components/providers/LanguageProvider";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 type Row = {
   id: string;
   user_id: string;
   content: string;
+  translations?: Record<string, unknown> | null;
+  image_url?: string | null;
   proof_url: string | null;
   status: string;
   created_at: string;
@@ -26,9 +30,22 @@ function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
+const LANGUAGE_TABS: LanguageCode[] = ["KO", "EN", "ZH", "JA"];
+
+function getTranslation(
+  translations: Record<string, unknown> | null,
+  language: LanguageCode
+): string {
+  const raw = translations?.[language.toLowerCase()];
+  if (typeof raw !== "string") return "";
+  return raw.trim();
+}
+
 type DetailData = {
   authorUserId: string;
   content: string;
+  translations: Record<string, unknown> | null;
+  imageUrl: string | null;
   proofUrl: string | null;
   nickname: string;
   activityName: string;
@@ -39,6 +56,7 @@ type DetailData = {
 };
 
 export default function ActivityDetailPage() {
+  const { language: selectedLanguage, setLanguage } = useLanguage();
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
 
@@ -98,6 +116,8 @@ export default function ActivityDetailPage() {
           id,
           user_id,
           content,
+          translations,
+          image_url,
           proof_url,
           status,
           created_at,
@@ -140,6 +160,8 @@ export default function ActivityDetailPage() {
       setData({
         authorUserId: r.user_id,
         content: r.content ?? "",
+        translations: r.translations ?? null,
+        imageUrl: r.image_url?.trim() || null,
         proofUrl: r.proof_url,
         nickname: prof?.nickname?.trim() || "익명",
         activityName: at?.name?.trim() || "활동",
@@ -157,39 +179,63 @@ export default function ActivityDetailPage() {
   }, [id]);
 
   useEffect(() => {
-    if (!id.trim() || !data || data.status !== "approved") {
+    const logId = id.trim();
+    if (!logId || !data || data.status !== "approved") {
       return;
     }
-    if (viewBumpForIdRef.current === id) {
+    if (viewBumpForIdRef.current === logId) {
       return;
     }
-    viewBumpForIdRef.current = id;
+
+    // 비로그인 상태에서는 조회수 RPC를 호출하지 않는다.
+    if (!viewerUserId) {
+      console.log("[increment_view_count_v2] skip: viewer not logged in", {
+        p_log_id: logId,
+        p_user_id: viewerUserId ?? null,
+      });
+      return;
+    }
+
+    viewBumpForIdRef.current = logId;
 
     const supabase = getSupabaseBrowserClient();
     void (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      const uid = user?.id ?? null;
+      if (viewerUserId === data.authorUserId) {
+        console.log("[increment_view_count_v2] skip: own post", {
+          p_log_id: logId,
+          p_user_id: viewerUserId,
+        });
+        return;
+      }
 
-      if (uid == null) {
-        return;
-      }
-      if (uid === data.authorUserId) {
-        return;
-      }
+      console.log("[increment_view_count_v2] before rpc", {
+        p_log_id: logId,
+        p_user_id: viewerUserId,
+      });
 
       const { error: rpcErr } = await supabase.rpc("increment_view_count_v2", {
-        p_log_id: id.trim(),
-        p_user_id: uid,
+        p_log_id: logId,
+        p_user_id: viewerUserId,
       });
+
       if (rpcErr) {
+        console.log("[increment_view_count_v2] rpc error", {
+          p_log_id: logId,
+          p_user_id: viewerUserId,
+          error: rpcErr.message,
+        });
         return;
       }
+
+      console.log("[increment_view_count_v2] after rpc", {
+        p_log_id: logId,
+        p_user_id: viewerUserId,
+      });
+
       const { data: vcRow } = await supabase
         .from("activity_logs")
         .select("view_count")
-        .eq("id", id.trim())
+        .eq("id", logId)
         .maybeSingle();
       const nextVc =
         vcRow && typeof (vcRow as { view_count?: number }).view_count === "number"
@@ -199,9 +245,12 @@ export default function ActivityDetailPage() {
         setData((d) => (d ? { ...d, viewCount: nextVc } : d));
       }
     })();
-  }, [id, data]);
+  }, [id, data, viewerUserId]);
 
   const isApproved = data?.status === "approved";
+  const selectedTranslation = data ? getTranslation(data.translations, selectedLanguage) : "";
+  const useTranslatedAsPrimary =
+    Boolean(data) && selectedLanguage !== "KO" && selectedTranslation.length > 0;
 
   const refreshSyncCount = useCallback(() => {
     if (!id.trim()) return;
@@ -257,7 +306,7 @@ export default function ActivityDetailPage() {
             </Link>
           </div>
         ) : (
-          <article className="mt-10">
+          <article className="mt-10 rounded-3xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-sm sm:p-8">
             <header className="space-y-4 border-b border-white/10 pb-8">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-1 text-sm font-medium text-fuchsia-100">
@@ -271,9 +320,9 @@ export default function ActivityDetailPage() {
                   </p>
                   <p className="mt-1 text-xl font-semibold text-white">{data.nickname}</p>
                 </div>
-                <div className="rounded-2xl border border-sync-purple/40 bg-sync-purple/10 px-5 py-3 text-center sm:text-right">
+                <div className="rounded-2xl border border-fuchsia-600/40 bg-fuchsia-600/10 px-5 py-3 text-center sm:text-right">
                   <p className="text-xs font-medium text-zinc-400">획득 VIBE</p>
-                  <p className="mt-1 text-3xl font-bold tabular-nums text-sync-purple">
+                  <p className="mt-1 text-3xl font-bold tabular-nums text-fuchsia-600">
                     +{data.vibes.toLocaleString("ko-KR")}
                     <span className="ml-1 text-lg font-semibold text-fuchsia-200/80">V</span>
                   </p>
@@ -299,9 +348,54 @@ export default function ActivityDetailPage() {
             </header>
 
             <div className="py-10">
-              <p className="whitespace-pre-wrap text-lg leading-relaxed text-zinc-100 sm:text-xl sm:leading-relaxed">
-                {data.content}
+              <div className="mb-6">
+                <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-900">
+                  {data.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- 외부 이미지 URL 가변
+                    <img
+                      src={data.imageUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-700"
+                      aria-hidden
+                    />
+                  )}
+                </div>
+              </div>
+              <div className="mb-6">
+                <div className="inline-flex items-center rounded-xl border border-zinc-800 bg-zinc-900/70 p-1">
+                  {LANGUAGE_TABS.map((lang) => {
+                    const active = selectedLanguage === lang;
+                    return (
+                      <button
+                        key={lang}
+                        type="button"
+                        onClick={() => {
+                          void setLanguage(lang);
+                        }}
+                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold tracking-wide transition ${
+                          active
+                            ? "bg-fuchsia-600 text-white"
+                            : "text-zinc-400 hover:text-zinc-200"
+                        }`}
+                      >
+                        {lang}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <p className="whitespace-pre-wrap text-lg font-semibold leading-relaxed text-zinc-100 sm:text-xl sm:leading-relaxed">
+                {useTranslatedAsPrimary ? selectedTranslation : data.content}
               </p>
+              {useTranslatedAsPrimary ? (
+                <p className="mt-3 whitespace-pre-wrap text-sm font-normal italic leading-relaxed text-zinc-500">
+                  {data.content}
+                </p>
+              ) : null}
             </div>
 
             {isApproved ? (

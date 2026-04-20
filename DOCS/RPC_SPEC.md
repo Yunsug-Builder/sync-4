@@ -1,7 +1,7 @@
 # RPC 명세서 (Source of Truth)
 
 기준 파일: `Supabase Snippet Function Docs in Markdown.csv`
-추가 반영: `supabase/migrations/017_shop_purchase_guard_and_toggle_rpc.sql`
+추가 반영: 최신 RPC 함수 정의
 
 ---
 
@@ -180,7 +180,11 @@ BEGIN
     VALUES (v_user_id, p_item_id);
 
     RETURN jsonb_build_object('ok', true, 'message', '구매가 완료되었습니다.');
+
 EXCEPTION
+    WHEN unique_violation THEN
+        -- 동시성 상황에서 유니크 인덱스가 막은 경우
+        RETURN jsonb_build_object('ok', false, 'error', '이미 보유한 아이템입니다.');
     WHEN OTHERS THEN
         RETURN jsonb_build_object('ok', false, 'error', '처리 중 오류가 발생했습니다.');
 END;
@@ -192,7 +196,6 @@ END;
 ```sql
 DECLARE
     v_user_id uuid := auth.uid();
-    v_item_id uuid;
     v_category text;
     v_current_active boolean;
     v_next_active boolean;
@@ -201,8 +204,9 @@ BEGIN
         RETURN jsonb_build_object('ok', false, 'error', '로그인이 필요합니다.');
     END IF;
 
-    SELECT ui.item_id, COALESCE(ui.is_active, false), si.category
-    INTO v_item_id, v_current_active, v_category
+    -- 본인 인벤토리 + 카테고리 확인 + 대상 행 잠금
+    SELECT COALESCE(ui.is_active, false), si.category
+    INTO v_current_active, v_category
     FROM public.user_inventory ui
     JOIN public.shop_items si ON si.id = ui.item_id
     WHERE ui.id = p_inventory_id
@@ -219,6 +223,7 @@ BEGIN
 
     v_next_active := NOT v_current_active;
 
+    -- true로 바꾸는 경우, 같은 카테고리 전부 false 처리
     IF v_next_active THEN
         UPDATE public.user_inventory ui
         SET is_active = false
@@ -228,6 +233,7 @@ BEGIN
           AND si.category = v_category;
     END IF;
 
+    -- 대상 아이템 최종 토글 반영
     UPDATE public.user_inventory
     SET is_active = v_next_active
     WHERE id = p_inventory_id
@@ -236,11 +242,12 @@ BEGIN
     RETURN jsonb_build_object(
         'ok', true,
         'is_active', v_next_active,
-        'message', CASE WHEN v_next_active
-            THEN '아이템을 프로필에 적용했습니다.'
+        'message', CASE
+            WHEN v_next_active THEN '아이템을 프로필에 적용했습니다.'
             ELSE '아이템 적용을 해제했습니다.'
         END
     );
+
 EXCEPTION
     WHEN OTHERS THEN
         RETURN jsonb_build_object('ok', false, 'error', '처리 중 오류가 발생했습니다.');
