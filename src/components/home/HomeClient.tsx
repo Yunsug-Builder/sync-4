@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { FeedCard } from "@/components/home/FeedCard";
@@ -188,8 +188,26 @@ export default function HomeClient() {
     void loadFeed();
   }, [loadFeed]);
 
+  /** Prefer entries that have a non-empty translation for the selected UI language (then newest first). */
+  const displayedEntries = useMemo(() => {
+    if (preferredLanguage === "KO") {
+      return entries;
+    }
+    const key = preferredLanguage.toLowerCase();
+    const hasTranslation = (e: FeedEntry) => {
+      const t = e.translations?.[key];
+      return typeof t === "string" && t.trim().length > 0;
+    };
+    return [...entries].sort((a, b) => {
+      const diff = Number(hasTranslation(b)) - Number(hasTranslation(a));
+      if (diff !== 0) return diff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [entries, preferredLanguage]);
+
   const loggedIn = Boolean(session?.user);
   const submitHref = loggedIn ? "/activities/submit" : "/login";
+  const writeHref = loggedIn ? "/write" : "/login";
   const meLabel =
     me?.nickname?.trim() ||
     (session?.user?.email ? session.user.email.split("@")[0] : null);
@@ -279,7 +297,7 @@ export default function HomeClient() {
           </div>
         ) : loadingFeed ? (
           <p className="text-sm text-zinc-500">아카이브를 불러오는 중…</p>
-        ) : entries.length === 0 ? (
+        ) : displayedEntries.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-white/15 bg-zinc-900/35 px-8 py-16 text-center">
             <p className="text-lg font-medium text-zinc-200">아직 공개된 인증이 없습니다</p>
             <p className="mt-2 text-sm text-zinc-500">
@@ -288,7 +306,7 @@ export default function HomeClient() {
           </div>
         ) : (
           <ul className="space-y-5">
-            {entries.map((entry) => {
+            {displayedEntries.map((entry) => {
               return (
                 <FeedCard
                   key={entry.id}
@@ -300,6 +318,12 @@ export default function HomeClient() {
           </ul>
         )}
       </main>
+      <Link
+        href={writeHref}
+        className="fixed bottom-6 right-6 z-40 inline-flex h-12 items-center justify-center rounded-full bg-fuchsia-500 px-5 text-sm font-semibold text-white shadow-lg shadow-fuchsia-900/40 transition hover:bg-fuchsia-400"
+      >
+        글쓰기
+      </Link>
     </div>
   );
 }

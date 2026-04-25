@@ -1,148 +1,81 @@
-# DB 스키마 설계도 (Source of Truth: Supabase)
+# DB Schema (Source of Truth: Supabase)
 
-## activity_comments
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | uuid_generate_v4() |
-| user_id | uuid | N | Y | null |
-| activity_log_id | uuid | N | Y | null |
-| content | text | N | N | null |
-| created_at | timestamp with time zone | N | Y | timezone('utc'::text, now()) |
-
-## activity_logs
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | gen_random_uuid() |
-| user_id | uuid | N | Y | null |
-| artist_id | uuid | N | Y | null |
-| activity_type_id | uuid | N | Y | null |
-| status | text | N | Y | 'pending'::text |
-| proof_url | text | N | Y | null |
-| created_at | timestamp with time zone | N | Y | now() |
-| content | text | N | Y | null |
-| image_url | text | N | Y | null |
-| translations | jsonb | N | Y | {} |
-| view_count | integer | N | Y | 0 |
-| bonus_vibes | integer | N | Y | 0 |
-| total_reward_vibes | integer | N | Y | 0 |
-| is_settled | boolean | N | Y | false |
-
-## activity_syncs
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | uuid_generate_v4() |
-| user_id | uuid | N | Y | null |
-| activity_id | uuid | N | Y | null |
-| created_at | timestamp with time zone | N | Y | timezone('utc'::text, now()) |
-
-## activity_types
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | gen_random_uuid() |
-| name | text | N | N | null |
-| base_vibes | integer | N | Y | 0 |
-
-## activity_view_logs
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | uuid_generate_v4() |
-| user_id | uuid | N | Y | null |
-| activity_id | uuid | N | Y | null |
-| viewed_at | date | N | Y | CURRENT_DATE |
-
-## artists
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | gen_random_uuid() |
-| name | text | N | N | null |
-| image_url | text | N | Y | null |
-| created_at | timestamp with time zone | N | Y | now() |
-| fandom_name | text | N | Y | null |
-| description | text | N | Y | null |
-| archive_guide | text | N | Y | null |
-| sync_strategy | text | N | Y | null |
-
-## profiles
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | null |
-| nickname | text | N | Y | null |
-| avatar_url | text | N | Y | null |
-| total_vibes | integer | N | Y | 0 |
-| updated_at | timestamp with time zone | N | Y | now() |
-
-## settlement_history
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | uuid_generate_v4() |
-| user_id | uuid | N | Y | null |
-| week_start | timestamp with time zone | N | Y | null |
-| total_syncs_count | integer | N | Y | 0 |
-| total_views_count | integer | N | Y | 0 |
-| bonus_vibes | integer | N | Y | 0 |
-| created_at | timestamp with time zone | N | Y | now() |
-
-## shop_items
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | gen_random_uuid() |
-| name | text | N | N | null |
-| description | text | N | Y | null |
-| price | bigint | N | N | null |
-| image_url | text | N | Y | null |
-| category | text | N | Y | 'deco'::text |
-| created_at | timestamp with time zone | N | Y | now() |
-
-## spots
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | gen_random_uuid() |
-| artist_id | uuid | N | Y | null |
-| title | text | N | N | null |
-| lat | double precision | N | N | null |
-| lng | double precision | N | N | null |
-| image_url | text | N | Y | null |
-| created_at | timestamp with time zone | N | Y | now() |
-
-## user_inventory
-
-| 컬럼명 | 데이터 타입 | PK | NULL 허용 | 기본값 |
-|---|---|---|---|---|
-| id | uuid | Y | N | gen_random_uuid() |
-| user_id | uuid | N | Y | null |
-| item_id | uuid | N | Y | null |
-| is_active | boolean | N | Y | false |
-| purchased_at | timestamp with time zone | N | Y | now() |
-
-### 제약/인덱스 (최신 반영)
-
-- `ux_user_inventory_user_item` (UNIQUE INDEX on `user_inventory(user_id, item_id)`)
-  - 동일 유저의 동일 아이템 중복 보유를 DB 레벨에서 차단합니다.
-
----
-
-## Shop/Inventory 동작 관련 최신 변경사항
-
-- `purchase_item(p_item_id uuid)`:
-  - `auth.uid()` 기준으로 현재 로그인 유저만 구매 가능
-  - `shop_items.price` 조회 후, `profiles.total_vibes`를 `FOR UPDATE`로 잠그고 잔액 검증
-  - 이미 보유한 아이템 구매 시 `ok=false`와 에러 메시지를 반환
-  - 성공 시 `profiles.total_vibes` 차감 후 `user_inventory(user_id, item_id)`에 새 row 생성
-  - 반환값은 `jsonb`이며 기본 형태는 `ok`, `message|error`
-- `toggle_item_active(p_inventory_id uuid)`:
-  - 장착/해제 토글을 RPC로 일원화
-  - 파라미터는 `shop_items.id`가 아니라 `user_inventory.id`
-  - `auth.uid()` 기준으로 본인 인벤토리 row만 수정 가능
-  - `true`로 활성화할 때 동일 `shop_items.category`의 다른 장착 아이템은 자동 `false` 처리
-  - 카테고리가 없는 아이템은 적용 불가
-  - 반환값은 `jsonb`이며 기본 형태는 `ok`, `is_active`, `message|error`
+| table_name         | column_name        | data_type                | is_nullable | column_default               |
+| ------------------ | ------------------ | ------------------------ | ----------- | ---------------------------- |
+| activity_comments  | id                 | uuid                     | NO          | uuid_generate_v4()           |
+| activity_comments  | user_id            | uuid                     | YES         | null                         |
+| activity_comments  | activity_log_id    | uuid                     | YES         | null                         |
+| activity_comments  | content            | text                     | NO          | null                         |
+| activity_comments  | created_at         | timestamp with time zone | YES         | timezone('utc'::text, now()) |
+| activity_logs      | id                 | uuid                     | NO          | gen_random_uuid()            |
+| activity_logs      | user_id            | uuid                     | YES         | null                         |
+| activity_logs      | artist_id          | uuid                     | YES         | null                         |
+| activity_logs      | activity_type_id   | uuid                     | YES         | null                         |
+| activity_logs      | status             | text                     | YES         | 'pending'::text              |
+| activity_logs      | proof_url          | text                     | YES         | null                         |
+| activity_logs      | created_at         | timestamp with time zone | YES         | now()                        |
+| activity_logs      | content            | text                     | YES         | null                         |
+| activity_logs      | view_count         | integer                  | YES         | 0                            |
+| activity_logs      | bonus_vibes        | integer                  | YES         | 0                            |
+| activity_logs      | total_reward_vibes | integer                  | YES         | 0                            |
+| activity_logs      | is_settled         | boolean                  | YES         | false                        |
+| activity_logs      | translations       | jsonb                    | YES         | '{}'::jsonb                  |
+| activity_logs      | image_url          | text                     | YES         | null                         |
+| activity_logs      | source_type        | text                     | YES         | 'internal'::text             |
+| activity_logs      | external_url       | text                     | YES         | null                         |
+| activity_logs      | ai_evaluation      | jsonb                    | YES         | '{}'::jsonb                  |
+| activity_logs      | raw_content        | text                     | YES         | null                         |
+| activity_syncs     | id                 | uuid                     | NO          | uuid_generate_v4()           |
+| activity_syncs     | user_id            | uuid                     | YES         | null                         |
+| activity_syncs     | activity_id        | uuid                     | YES         | null                         |
+| activity_syncs     | created_at         | timestamp with time zone | YES         | timezone('utc'::text, now()) |
+| activity_types     | id                 | uuid                     | NO          | gen_random_uuid()            |
+| activity_types     | name               | text                     | NO          | null                         |
+| activity_types     | base_vibes         | integer                  | YES         | 0                            |
+| activity_view_logs | id                 | uuid                     | NO          | uuid_generate_v4()           |
+| activity_view_logs | user_id            | uuid                     | YES         | null                         |
+| activity_view_logs | activity_id        | uuid                     | YES         | null                         |
+| activity_view_logs | viewed_at          | date                     | YES         | CURRENT_DATE                 |
+| artists            | id                 | uuid                     | NO          | gen_random_uuid()            |
+| artists            | name               | text                     | NO          | null                         |
+| artists            | image_url          | text                     | YES         | null                         |
+| artists            | created_at         | timestamp with time zone | YES         | now()                        |
+| artists            | fandom_name        | text                     | YES         | null                         |
+| artists            | description        | text                     | YES         | null                         |
+| artists            | archive_guide      | text                     | YES         | null                         |
+| artists            | sync_strategy      | text                     | YES         | null                         |
+| profiles           | id                 | uuid                     | NO          | null                         |
+| profiles           | nickname           | text                     | YES         | null                         |
+| profiles           | avatar_url         | text                     | YES         | null                         |
+| profiles           | total_vibes        | integer                  | YES         | 0                            |
+| profiles           | updated_at         | timestamp with time zone | YES         | now()                        |
+| profiles           | preferred_language | text                     | YES         | 'en'::text                   |
+| profiles           | x_handle           | text                     | YES         | null                         |
+| profiles           | verification_code  | text                     | YES         | null                         |
+| profiles           | is_x_verified      | boolean                  | YES         | false                        |
+| settlement_history | id                 | uuid                     | NO          | uuid_generate_v4()           |
+| settlement_history | user_id            | uuid                     | YES         | null                         |
+| settlement_history | week_start         | timestamp with time zone | YES         | null                         |
+| settlement_history | total_syncs_count  | integer                  | YES         | 0                            |
+| settlement_history | total_views_count  | integer                  | YES         | 0                            |
+| settlement_history | bonus_vibes        | integer                  | YES         | 0                            |
+| settlement_history | created_at         | timestamp with time zone | YES         | now()                        |
+| shop_items         | id                 | uuid                     | NO          | gen_random_uuid()            |
+| shop_items         | name               | text                     | NO          | null                         |
+| shop_items         | description        | text                     | YES         | null                         |
+| shop_items         | price              | bigint                   | NO          | null                         |
+| shop_items         | image_url          | text                     | YES         | null                         |
+| shop_items         | category           | text                     | YES         | 'deco'::text                 |
+| shop_items         | created_at         | timestamp with time zone | YES         | now()                        |
+| spots              | id                 | uuid                     | NO          | gen_random_uuid()            |
+| spots              | artist_id          | uuid                     | YES         | null                         |
+| spots              | title              | text                     | NO          | null                         |
+| spots              | lat                | double precision         | NO          | null                         |
+| spots              | lng                | double precision         | NO          | null                         |
+| spots              | image_url          | text                     | YES         | null                         |
+| spots              | created_at         | timestamp with time zone | YES         | now()                        |
+| user_inventory     | id                 | uuid                     | NO          | gen_random_uuid()            |
+| user_inventory     | user_id            | uuid                     | YES         | null                         |
+| user_inventory     | item_id            | uuid                     | YES         | null                         |
+| user_inventory     | is_active          | boolean                  | YES         | false                        |
+| user_inventory     | purchased_at       | timestamp with time zone | YES         | now()                        |

@@ -31,17 +31,26 @@ export function Header() {
   }, [open]);
 
   return (
-    <header className="border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
-      <div className="mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
+    <header className="sticky top-0 z-[9999] pointer-events-auto border-b border-zinc-800 bg-zinc-950/90 backdrop-blur">
+      <div className="pointer-events-auto mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
         <Link href="/" className="text-sm font-semibold tracking-wide text-zinc-100">
           SYNC
         </Link>
-        <div className="flex items-center gap-2">
-          <div className="relative" ref={wrapRef}>
+        <div className="pointer-events-auto z-[9999] flex items-center gap-2">
+          <Link
+            href="/write"
+            className="inline-flex min-h-11 items-center rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/15 px-3 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/25"
+          >
+            글쓰기
+          </Link>
+          <div className="relative z-[9999] pointer-events-auto" ref={wrapRef}>
             <button
               type="button"
-              onClick={() => setOpen((v) => !v)}
-              className="inline-flex min-h-11 items-center rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-xs font-semibold text-zinc-200"
+              onClick={() => {
+                console.log("Language Clicked:", "toggle");
+                setOpen((v) => !v);
+              }}
+              className="pointer-events-auto z-[9999] inline-flex min-h-11 items-center rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-xs font-semibold text-zinc-200"
               aria-haspopup="menu"
               aria-expanded={open}
             >
@@ -50,17 +59,18 @@ export function Header() {
             {open ? (
               <div
                 role="menu"
-                className="absolute right-0 z-30 mt-2 w-36 rounded-lg border border-zinc-800 bg-zinc-950/90 p-1 shadow-xl backdrop-blur-sm"
+                className="pointer-events-auto absolute right-0 z-[9999] mt-2 w-36 rounded-lg border border-zinc-800 bg-zinc-950/90 p-1 shadow-xl backdrop-blur-sm"
               >
                 {LANGUAGE_OPTIONS.map((option) => (
                   <button
                     key={option.code}
                     type="button"
                     onClick={() => {
+                      console.log("Language Clicked:", option.code);
                       void setLanguage(option.code);
                       setOpen(false);
                     }}
-                    className={`flex min-h-11 w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
+                    className={`pointer-events-auto z-[9999] flex min-h-11 w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm ${
                       language === option.code
                         ? "text-fuchsia-500"
                         : "text-zinc-300 hover:bg-zinc-800/80"

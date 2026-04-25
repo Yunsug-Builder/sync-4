@@ -33,12 +33,15 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        {/* LanguageProvider must wrap all client UI that reads/writes language (single root layout). */}
         <LanguageProvider>
-          <DevNav />
-          <Header />
-          {children}
-          <AppToaster />
-          <LoginSuccessToast />
+          <div className="flex min-h-full flex-1 flex-col">
+            <DevNav />
+            <Header />
+            <div className="min-h-0 flex-1">{children}</div>
+            <AppToaster />
+            <LoginSuccessToast />
+          </div>
         </LanguageProvider>
       </body>
     </html>

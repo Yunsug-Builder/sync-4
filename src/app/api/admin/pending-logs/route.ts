@@ -9,6 +9,10 @@ export type PendingLogRow = {
   content: string | null;
   created_at: string;
   user_id: string;
+  source_type: string | null;
+  external_url: string | null;
+  ai_evaluation: Record<string, unknown> | null;
+  raw_content: string | null;
   profiles: { nickname: string | null } | null;
   activity_types: { name: string; base_vibes: number } | null;
 };
@@ -19,11 +23,21 @@ function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
 }
 
 function normalizePendingRow(row: Record<string, unknown>): PendingLogRow {
+  const aiEvaluationRaw = row.ai_evaluation;
+  const aiEvaluation =
+    aiEvaluationRaw != null && typeof aiEvaluationRaw === "object"
+      ? (aiEvaluationRaw as Record<string, unknown>)
+      : null;
+
   return {
     id: String(row.id),
     content: row.content != null ? String(row.content) : null,
     created_at: String(row.created_at),
     user_id: String(row.user_id),
+    source_type: row.source_type != null ? String(row.source_type) : null,
+    external_url: row.external_url != null ? String(row.external_url) : null,
+    ai_evaluation: aiEvaluation,
+    raw_content: row.raw_content != null ? String(row.raw_content) : null,
     profiles: firstOrNull(row.profiles as { nickname: string | null } | null),
     activity_types: firstOrNull(
       row.activity_types as { name: string; base_vibes: number } | null
@@ -53,6 +67,10 @@ export async function GET() {
       content,
       created_at,
       user_id,
+      source_type,
+      external_url,
+      ai_evaluation,
+      raw_content,
       profiles ( nickname ),
       activity_types ( name, base_vibes )
     `

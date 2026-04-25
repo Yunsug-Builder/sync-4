@@ -9,6 +9,10 @@ type PendingLog = {
   content: string | null;
   created_at: string;
   user_id: string;
+  source_type: string | null;
+  external_url: string | null;
+  ai_evaluation: Record<string, unknown> | null;
+  raw_content: string | null;
   profiles: { nickname: string | null } | null;
   activity_types: { name: string; base_vibes: number } | null;
 };
@@ -18,6 +22,10 @@ type ApprovedLog = {
   content: string | null;
   created_at: string;
   user_id: string;
+  source_type: string | null;
+  external_url: string | null;
+  ai_evaluation: Record<string, unknown> | null;
+  raw_content: string | null;
   view_count: number;
   is_settled: boolean;
   sync_count: number;
@@ -97,13 +105,24 @@ export default function AdminPage() {
     return () => window.clearInterval(t);
   }, [loadApproved]);
 
-  const handleApprove = async (id: string) => {
+  const handleApprove = async (
+    id: string,
+    finalVibes: number,
+    aiEvaluation: Record<string, unknown> | null
+  ) => {
     setActingId(id);
     setBanner(null);
     const idKey = id.trim().toLowerCase();
     const res = await fetch(
       `/api/admin/activity-logs/${encodeURIComponent(id)}/approve`,
-      { method: "POST" }
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          final_vibes: finalVibes,
+          ai_evaluation: aiEvaluation,
+        }),
+      }
     );
     let body: { ok?: boolean; error?: string; vibes_added?: number } = {};
     try {
@@ -281,7 +300,13 @@ export default function AdminPage() {
                             <button
                               type="button"
                               disabled={busy}
-                              onClick={() => void handleApprove(row.id)}
+                              onClick={() =>
+                                void handleApprove(
+                                  row.id,
+                                  row.activity_types?.base_vibes ?? 0,
+                                  row.ai_evaluation
+                                )
+                              }
                               className="rounded-xl bg-white px-3 py-1.5 text-xs font-medium text-zinc-950 transition hover:opacity-90 disabled:opacity-50"
                             >
                               {busy ? "처리 중…" : "승인"}
@@ -331,7 +356,13 @@ export default function AdminPage() {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => void handleApprove(row.id)}
+                        onClick={() =>
+                          void handleApprove(
+                            row.id,
+                            row.activity_types?.base_vibes ?? 0,
+                            row.ai_evaluation
+                          )
+                        }
                         className="flex-1 rounded-xl bg-white py-2.5 text-sm font-medium text-zinc-950 transition hover:opacity-90 disabled:opacity-50"
                       >
                         {busy ? "처리 중…" : "승인"}

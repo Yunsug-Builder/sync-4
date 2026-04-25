@@ -12,6 +12,11 @@ type ApproveRpcPayload = {
   vibes_added?: number;
 };
 
+type ApproveRequestBody = {
+  final_vibes?: number;
+  ai_evaluation?: Record<string, unknown> | null;
+};
+
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
   if (v == null) return null;
   return Array.isArray(v) ? (v[0] ?? null) : v;
@@ -40,7 +45,12 @@ function parseApproveRpcPayload(data: unknown): ApproveRpcPayload {
     if ("ok" in o || "error" in o) {
       return o as ApproveRpcPayload;
     }
-    for (const k of ["result", "data", "admin_approve_activity_log"]) {
+    for (const k of [
+      "result",
+      "data",
+      "admin_approve_activity_log_v2",
+      "admin_approve_activity_log",
+    ]) {
       if (k in o) {
         return parseApproveRpcPayload(o[k]);
       }
@@ -50,7 +60,7 @@ function parseApproveRpcPayload(data: unknown): ApproveRpcPayload {
   return {};
 }
 
-export async function POST(_request: Request, context: Ctx) {
+export async function POST(request: Request, context: Ctx) {
   if (!hasSupabaseServiceRoleConfig()) {
     return NextResponse.json(
       {
@@ -64,10 +74,32 @@ export async function POST(_request: Request, context: Ctx) {
 
   const { id } = await context.params;
   const supabase = createSupabaseServiceRoleClient();
+  let requestBody: ApproveRequestBody = {};
+
+  try {
+    requestBody = (await request.json()) as ApproveRequestBody;
+  } catch {
+    requestBody = {};
+  }
+
+  const finalVibes =
+    typeof requestBody.final_vibes === "number" &&
+    Number.isFinite(requestBody.final_vibes)
+      ? Math.max(0, Math.floor(requestBody.final_vibes))
+      : 0;
+  const aiEvaluation =
+    requestBody.ai_evaluation != null &&
+    typeof requestBody.ai_evaluation === "object"
+      ? requestBody.ai_evaluation
+      : null;
 
   const { data: rpcData, error: rpcError } = await supabase.rpc(
-    "admin_approve_activity_log",
-    { p_log_id: id }
+    "admin_approve_activity_log_v2",
+    {
+      p_log_id: id,
+      p_final_vibes: finalVibes,
+      p_ai_evaluation: aiEvaluation,
+    }
   );
 
   if (rpcError) {

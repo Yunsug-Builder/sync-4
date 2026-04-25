@@ -10,6 +10,10 @@ export type ApprovedLogRow = {
   content: string | null;
   created_at: string;
   user_id: string;
+  source_type: string | null;
+  external_url: string | null;
+  ai_evaluation: Record<string, unknown> | null;
+  raw_content: string | null;
   view_count: number;
   is_settled: boolean;
   sync_count: number;
@@ -45,10 +49,15 @@ export async function GET() {
       content,
       created_at,
       user_id,
+      source_type,
+      external_url,
+      ai_evaluation,
+      raw_content,
       view_count,
       is_settled,
       profiles ( nickname ),
-      activity_types ( name, base_vibes )
+      activity_types ( name, base_vibes ),
+      activity_syncs ( count )
     `
     )
     .eq("status", "approved")
@@ -62,38 +71,44 @@ export async function GET() {
     );
   }
 
-  const logs: ApprovedLogRow[] = [];
-
-  for (const raw of rows ?? []) {
+  const logs: ApprovedLogRow[] = (rows ?? []).map((raw) => {
     const row = raw as Record<string, unknown>;
-    const id = String(row.id);
-    const { count: syncCount } = await supabase
-      .from("activity_syncs")
-      .select("*", { count: "exact", head: true })
-      .eq("activity_id", id);
-
     const vc =
       typeof row.view_count === "number" && !Number.isNaN(row.view_count)
         ? row.view_count
         : 0;
-    const sc = syncCount ?? 0;
-    const est = estimatedBonusVibes(sc, vc);
 
-    logs.push({
-      id,
+    const syncAgg = firstOrNull(
+      row.activity_syncs as { count?: number | string | null } | null
+    );
+    const syncCountRaw =
+      syncAgg?.count != null ? Number(syncAgg.count) : Number.NaN;
+    const sc = Number.isFinite(syncCountRaw) ? syncCountRaw : 0;
+    const aiEvaluationRaw = row.ai_evaluation;
+    const aiEvaluation =
+      aiEvaluationRaw != null && typeof aiEvaluationRaw === "object"
+        ? (aiEvaluationRaw as Record<string, unknown>)
+        : null;
+
+    return {
+      id: String(row.id),
       content: row.content != null ? String(row.content) : null,
       created_at: String(row.created_at),
       user_id: String(row.user_id),
+      source_type: row.source_type != null ? String(row.source_type) : null,
+      external_url: row.external_url != null ? String(row.external_url) : null,
+      ai_evaluation: aiEvaluation,
+      raw_content: row.raw_content != null ? String(row.raw_content) : null,
       view_count: vc,
       is_settled: Boolean(row.is_settled),
       sync_count: sc,
-      estimated_bonus: est,
+      estimated_bonus: estimatedBonusVibes(sc, vc),
       profiles: firstOrNull(row.profiles as { nickname: string | null } | null),
       activity_types: firstOrNull(
         row.activity_types as { name: string; base_vibes: number } | null
       ),
-    });
-  }
+    };
+  });
 
   return NextResponse.json({
     ok: true,

@@ -17,6 +17,12 @@ function mapInsertError(message: string): string {
   if (lower.includes("activity_logs_content_nonempty")) {
     return "인증 내용을 입력해 주세요.";
   }
+  if (lower.includes("이미 등록된 게시글")) {
+    return "이미 등록된 게시글입니다.";
+  }
+  if (lower.includes("duplicate") || lower.includes("unique") || lower.includes("23505")) {
+    return "이미 등록된 게시글입니다.";
+  }
   if (lower.includes("foreign key") || lower.includes("23503")) {
     return "저장에 실패했습니다. 활동 유형 또는 아티스트 데이터를 확인해 주세요.";
   }
@@ -125,66 +131,49 @@ export default function SubmitActivityPage() {
       return;
     }
 
-    const userId = user.id;
-
     const insertPayload = {
-      user_id: userId,
       artist_id: artistId,
       activity_type_id: activityTypeId.trim(),
       content: text,
       proof_url: proofUrlNormalized,
-      status: "pending" as const,
     };
 
-    const { data: inserted, error } = await supabase
-      .from("activity_logs")
-      .insert(insertPayload)
-      .select("id,user_id,artist_id,activity_type_id,content,proof_url,status")
-      .single();
-
-    if (error) {
-      setFormError(mapInsertError(error.message));
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setFormError("로그인 정보를 찾을 수 없습니다. 다시 로그인해 주세요.");
       setSubmitting(false);
       return;
     }
 
-    if (!inserted?.id) {
-      setFormError("저장은 되었으나 생성된 행을 확인할 수 없습니다. RLS 설정을 확인해 주세요.");
-      setSubmitting(false);
-      return;
-    }
+    const response = await fetch("/api/activity-logs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(insertPayload),
+    });
 
-    const row = inserted as {
-      id: string;
-      user_id: string;
-      artist_id: string;
-      activity_type_id: string;
-      content: string | null;
-      status: string | null;
+    const body = (await response.json()) as {
+      ok?: boolean;
+      id?: string | null;
+      error?: string;
     };
 
-    if (!row.user_id || !row.artist_id || !row.activity_type_id) {
-      console.error("[activity_logs] 반환 행에 필수 ID가 누락됨:", row);
-      setFormError("저장 데이터가 올바르지 않습니다. 다시 시도해 주세요.");
+    if (!response.ok || !body.ok) {
+      setFormError(mapInsertError(body.error ?? "저장에 실패했습니다."));
       setSubmitting(false);
       return;
     }
-
-    if (row.content == null || String(row.content).trim().length === 0) {
-      console.error("[activity_logs] content 컬럼이 비어 있음:", row);
-      setFormError("인증 내용이 저장되지 않았습니다. 다시 시도해 주세요.");
-      setSubmitting(false);
-      return;
-    }
-
-    console.log("[activity_logs] 새 행 1건이 DB에 생성되었습니다.", {
-      id: row.id,
-      user_id: row.user_id,
-      artist_id: row.artist_id,
-      activity_type_id: row.activity_type_id,
+    console.log("[activity_logs] 새 행 1건이 API를 통해 DB에 생성되었습니다.", {
+      id: body.id ?? null,
+      artist_id: insertPayload.artist_id,
+      activity_type_id: insertPayload.activity_type_id,
       contentPreview:
-        row.content.length > 80 ? `${row.content.slice(0, 80)}…` : row.content,
-      status: row.status,
+        insertPayload.content.length > 80
+          ? `${insertPayload.content.slice(0, 80)}…`
+          : insertPayload.content,
     });
 
     router.replace("/?submission=success");
