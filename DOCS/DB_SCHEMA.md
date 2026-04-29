@@ -1,6 +1,6 @@
 # DB Schema (canonical)
 
-**Source:** production Supabase (user-provided export). **Synced:** 2026-04-28.
+**Source:** production Supabase (user-provided export). **Synced:** 2026-04-29.
 
 앱 코드·마이그레이션을 수정할 때 **이 문서를 우선**하고, 로컬 `supabase/migrations`와 차이가 있으면 마이그레이션을 DB에 맞추거나 이 문서를 갱신하세요.
 
@@ -30,6 +30,9 @@
 | activity_logs      | raw_content          | text                     | YES         | null                         |
 | activity_logs      | image_urls           | ARRAY                    | YES         | '{}'::text[]                 |
 | activity_logs      | qualified_view_count | integer                  | YES         | 0                            |
+| activity_logs      | deleted_at           | timestamp with time zone | YES         | null                         |
+| activity_logs      | ai_score             | integer                  | YES         | null                         |
+| activity_logs      | admin_memo           | text                     | YES         | null                         |
 | activity_syncs     | id                   | uuid                     | NO          | uuid_generate_v4()           |
 | activity_syncs     | user_id              | uuid                     | YES         | null                         |
 | activity_syncs     | activity_id          | uuid                     | YES         | null                         |
@@ -89,4 +92,7 @@
 
 - **`activity_logs.image_urls`:** `text[]` (empty default `'{}'::text[]`). 다중 이미지 URL.
 - **`activity_logs.qualified_view_count`:** 정산/퀄리파이드 조회; `increment_view_count_v4`와 `activity_view_logs`와 연동.
+- **`activity_logs.deleted_at`:** 소프트 삭제 시각(`status='deleted'`와 함께 사용).
+- **`activity_logs.ai_score`:** 관리자 판단 보조용 AI 점수(상태 결정과 분리).
+- **`activity_logs.admin_memo`:** 관리자 내부 메모.
 - **`activity_view_logs`:** UNIQUE `(user_id, activity_id, viewed_at)` 기반으로 유저·글·일 단위 기록을 관리.

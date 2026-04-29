@@ -3,10 +3,15 @@ import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleConfig,
 } from "@/lib/supabase-service";
+import { getAccessTokenFromRequest, isAdminByAccessToken } from "@/lib/admin-auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function POST(_request: Request, context: Ctx) {
+  const token = getAccessTokenFromRequest(_request);
+  if (!token || !(await isAdminByAccessToken(token))) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
   if (!hasSupabaseServiceRoleConfig()) {
     return NextResponse.json(
       {

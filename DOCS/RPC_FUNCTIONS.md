@@ -1,6 +1,6 @@
 # RPC function bodies (canonical)
 
-**Source:** production Supabase (user-provided export). **Synced:** 2026-04-28.
+**Source:** production Supabase (user-provided export). **Synced:** 2026-04-29.
 
 전체 시그니처 요약은 [RPC_SPEC.md](./RPC_SPEC.md)를 참고하세요.
 

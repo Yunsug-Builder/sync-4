@@ -3,6 +3,7 @@ import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleConfig,
 } from "@/lib/supabase-service";
+import { getAccessTokenFromRequest, isAdminByAccessToken } from "@/lib/admin-auth";
 
 export type PendingLogRow = {
   id: string;
@@ -45,7 +46,11 @@ function normalizePendingRow(row: Record<string, unknown>): PendingLogRow {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const token = getAccessTokenFromRequest(request);
+  if (!token || !(await isAdminByAccessToken(token))) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
   if (!hasSupabaseServiceRoleConfig()) {
     return NextResponse.json(
       {

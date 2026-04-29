@@ -1,6 +1,6 @@
 # RPC specification (canonical)
 
-**Source:** production Supabase (user-provided export). **Synced:** 2026-04-28.
+**Source:** production Supabase (user-provided export). **Synced:** 2026-04-29.
 
 PL/pgSQL **전문**은 [RPC_FUNCTIONS.md](./RPC_FUNCTIONS.md)에 정리되어 있습니다. 구현·리뷰 시 **이 스펙과 실제 DB**를 기준으로 하고, 레포의 `supabase/migrations`와 다르면 동기화 여부를 확인하세요.
 

@@ -4,6 +4,7 @@ import {
   hasSupabaseServiceRoleConfig,
 } from "@/lib/supabase-service";
 import { estimatedBonusVibes } from "@/lib/rewards";
+import { getAccessTokenFromRequest, isAdminByAccessToken } from "@/lib/admin-auth";
 
 export type ApprovedLogRow = {
   id: string;
@@ -27,7 +28,11 @@ function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const token = getAccessTokenFromRequest(request);
+  if (!token || !(await isAdminByAccessToken(token))) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
   if (!hasSupabaseServiceRoleConfig()) {
     return NextResponse.json(
       {

@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import AdminDashboardClient from "@/app/admin/AdminDashboardClient";
+import AdminActivityReviewClient from "@/app/admin/activities/[id]/AdminActivityReviewClient";
 import { resolveServerAdminAccess } from "@/lib/admin-auth";
 
-export default async function AdminPage() {
+export default async function AdminActivityDetailPage() {
   const access = await resolveServerAdminAccess();
   if (access === "deny") redirect("/");
-  return <AdminDashboardClient />;
+  return <AdminActivityReviewClient />;
 }

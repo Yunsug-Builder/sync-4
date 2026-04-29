@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createSupabaseAnonClient } from "@/lib/supabase";
 import {
   createSupabaseServiceRoleClient,
@@ -11,6 +12,7 @@ type SubmitBody = {
   artist_id?: string;
   activity_type_id?: string;
   content?: string;
+  raw_content?: string;
   proof_url?: string | null;
   image_urls?: unknown;
 };
@@ -22,7 +24,15 @@ type DeleteBody = {
 type UpdateBody = {
   id?: string;
   content?: string;
+  raw_content?: string;
   image_urls?: unknown;
+};
+
+type AiEvaluationResult = {
+  score: number;
+  pros: string[];
+  cons: string[];
+  reasoning: string;
 };
 
 function extractAccessToken(request: Request): string | null {
@@ -71,6 +81,25 @@ function normalizeImageUrls(
 }
 
 const ACTIVITY_IMAGES_BUCKET = "activity-images";
+const GEMINI_MODEL = "gemini-1.5-flash";
+const AI_REVIEW_SYSTEM_PROMPT = `
+당신은 SYNC 서비스의 관리자 전용 AI 심사 보조 엔진이다.
+사용자 게시글의 품질을 냉정하고 엄격하게 평가하라.
+
+평가 기준(총 100점):
+1) 아티스트 관련성: 40점
+2) 글의 정성(구체성/맥락/완성도): 40점
+3) 독창성(개인 경험/차별성): 20점
+
+반드시 JSON만 반환하라. 마크다운/설명문 금지.
+JSON 스키마:
+{
+  "score": number,         // 0~100 정수
+  "pros": string[],        // 강점
+  "cons": string[],        // 약점
+  "reasoning": string      // 점수 근거 요약
+}
+`;
 
 function inferImageExtension(url: string, contentType: string | null): string {
   const normalizedType = (contentType ?? "").toLowerCase();
@@ -156,6 +185,100 @@ async function mirrorExternalActivityImages(params: {
   return { ok: true, urls };
 }
 
+function normalizeAiEvaluation(raw: unknown): AiEvaluationResult {
+  const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const scoreRaw = typeof obj.score === "number" ? obj.score : Number(obj.score);
+  const score = Number.isFinite(scoreRaw) ? Math.max(0, Math.min(100, Math.round(scoreRaw))) : 0;
+  const pros = Array.isArray(obj.pros)
+    ? obj.pros.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean)
+    : [];
+  const cons = Array.isArray(obj.cons)
+    ? obj.cons.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean)
+    : [];
+  const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.trim() : "";
+  return { score, pros, cons, reasoning };
+}
+
+async function evaluateWithGemini(params: {
+  content: string;
+  rawContent: string;
+}): Promise<{ ok: true; result: AiEvaluationResult } | { ok: false; error: string }> {
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return { ok: false, error: "GEMINI_API_KEY 가 설정되지 않았습니다." };
+    }
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const prompt = JSON.stringify(
+      {
+        content: params.content,
+        raw_content: params.rawContent,
+        instruction:
+          "위 데이터를 기준으로 점수와 pros/cons/reasoning을 JSON으로 반환하라.",
+      },
+      null,
+      2
+    );
+    const response = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+      },
+      systemInstruction: AI_REVIEW_SYSTEM_PROMPT,
+    });
+    const text = response.response.text();
+    const parsed = JSON.parse(text) as unknown;
+    return { ok: true, result: normalizeAiEvaluation(parsed) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Gemini 심사 호출에 실패했습니다.",
+    };
+  }
+}
+
+async function persistAiEvaluation(params: {
+  supabase: ReturnType<typeof createSupabaseAnonClient>;
+  logId: string;
+  rawContent: string;
+  evaluation:
+    | AiEvaluationResult
+    | {
+        score: number;
+        pros: string[];
+        cons: string[];
+        reasoning: string;
+      };
+}) {
+  const { supabase, logId, rawContent, evaluation } = params;
+  const payload = {
+    raw_content: rawContent,
+    ai_evaluation: evaluation,
+    ai_score: evaluation.score,
+  };
+
+  const { error } = await supabase.from("activity_logs").update(payload).eq("id", logId);
+  if (!error) return;
+
+  const lower = `${error.message} ${error.details ?? ""}`.toLowerCase();
+  const aiScoreMissing = lower.includes("ai_score") && (lower.includes("column") || lower.includes("does not exist"));
+  if (aiScoreMissing) {
+    await supabase
+      .from("activity_logs")
+      .update({
+        raw_content: rawContent,
+        ai_evaluation: evaluation,
+      })
+      .eq("id", logId);
+  }
+}
+
 function mapInsertError(message: string): string {
   const lower = message.toLowerCase();
   if (lower.includes("unique_proof_url")) {
@@ -182,17 +305,19 @@ async function reviveRejectedProofLog(params: {
   targetId: string;
   proofUrl: string;
   content: string;
+  rawContent: string;
   imageUrls: string[];
 }): Promise<
   | { ok: true; id: string | null; revivedStatus: "pending" }
   | { ok: false; status: number; error: string }
 > {
-  const { supabase, userId, targetId, proofUrl, content, imageUrls } = params;
+  const { supabase, userId, targetId, proofUrl, content, rawContent, imageUrls } = params;
 
   const { data: updated, error: updateError } = await supabase
     .from("activity_logs")
     .update({
       content,
+      raw_content: rawContent,
       proof_url: proofUrl,
       image_urls: imageUrls.length > 0 ? imageUrls : null,
       status: "pending",
@@ -237,8 +362,9 @@ export async function POST(request: Request) {
     const artistId = (body.artist_id ?? "").trim();
     const activityTypeId = (body.activity_type_id ?? "").trim();
     const content = (body.content ?? "").trim();
-    const hasProofUrlField = Object.prototype.hasOwnProperty.call(body, "proof_url");
-    const proofUrl = normalizeProofUrl(body.proof_url ?? null);
+    const rawContent = (body.raw_content ?? "").trim() || content;
+    const rawProofUrl = body.proof_url;
+    const proofUrl = normalizeProofUrl(rawProofUrl ?? null);
     const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const imageUrlsResult = normalizeImageUrls(body.image_urls, projectUrl);
     if (!imageUrlsResult.ok) {
@@ -258,7 +384,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
-    if (hasProofUrlField && !proofUrl) {
+    if (typeof rawProofUrl === "string" && rawProofUrl.trim().length > 0 && !proofUrl) {
       return NextResponse.json(
         { ok: false, error: "proof_url 값이 비어 있거나 올바르지 않습니다." },
         { status: 400 }
@@ -338,6 +464,7 @@ export async function POST(request: Request) {
             targetId: existed.id,
             proofUrl,
             content,
+            rawContent,
             imageUrls: safeImageUrls,
           });
           if (!revived.ok) {
@@ -363,6 +490,7 @@ export async function POST(request: Request) {
         artist_id: artistId,
         activity_type_id: activityTypeId,
         content,
+        raw_content: rawContent,
         proof_url: proofUrl,
         image_urls: safeImageUrls.length > 0 ? safeImageUrls : null,
         status: "pending",
@@ -406,9 +534,34 @@ export async function POST(request: Request) {
       );
     }
 
+    const savedId = inserted?.id ?? null;
+    if (savedId) {
+      const aiResult = await evaluateWithGemini({ content, rawContent });
+      if (aiResult.ok) {
+        await persistAiEvaluation({
+          supabase,
+          logId: savedId,
+          rawContent,
+          evaluation: aiResult.result,
+        });
+      } else {
+        await persistAiEvaluation({
+          supabase,
+          logId: savedId,
+          rawContent,
+          evaluation: {
+            score: 0,
+            pros: [],
+            cons: ["AI 심사 실패"],
+            reasoning: aiResult.error,
+          },
+        });
+      }
+    }
+
     return NextResponse.json({
       ok: true,
-      id: inserted?.id ?? null,
+      id: savedId,
       message: "활동 인증이 등록되었습니다.",
     });
   } catch (error) {
@@ -506,6 +659,7 @@ export async function PATCH(request: Request) {
     }
     const logId = (body.id ?? "").trim();
     const content = (body.content ?? "").trim();
+    const rawContent = (body.raw_content ?? "").trim() || content;
     if (!logId) {
       return NextResponse.json({ ok: false, error: "수정할 활동 ID가 필요합니다." }, { status: 400 });
     }
@@ -553,6 +707,7 @@ export async function PATCH(request: Request) {
       .from("activity_logs")
       .update({
         content,
+        raw_content: rawContent,
         image_urls: imageUrls.length > 0 ? imageUrls : null,
         status: "pending",
         deleted_at: null,
@@ -570,6 +725,28 @@ export async function PATCH(request: Request) {
         { ok: false, error: "수정할 활동을 찾을 수 없거나 권한이 없습니다." },
         { status: 404 }
       );
+    }
+
+    const aiResult = await evaluateWithGemini({ content, rawContent });
+    if (aiResult.ok) {
+      await persistAiEvaluation({
+        supabase,
+        logId: updated.id,
+        rawContent,
+        evaluation: aiResult.result,
+      });
+    } else {
+      await persistAiEvaluation({
+        supabase,
+        logId: updated.id,
+        rawContent,
+        evaluation: {
+          score: 0,
+          pros: [],
+          cons: ["AI 심사 실패"],
+          reasoning: aiResult.error,
+        },
+      });
     }
 
     return NextResponse.json({

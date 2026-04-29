@@ -125,6 +125,7 @@ export default function WritePage() {
   const [imageUploading, setImageUploading] = useState(false);
   const [editingProofUrl, setEditingProofUrl] = useState<string | null>(null);
   const [importedProofUrl, setImportedProofUrl] = useState<string | null>(null);
+  const [importedRawContent, setImportedRawContent] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragImageIdxRef = useRef<number | null>(null);
 
@@ -232,6 +233,7 @@ export default function WritePage() {
       );
       setEditingProofUrl(typeof row.proof_url === "string" ? row.proof_url : null);
       setImportedProofUrl(null);
+      setImportedRawContent(null);
       setTab("direct");
       setLoadingEditDraft(false);
     })();
@@ -448,6 +450,7 @@ export default function WritePage() {
       setContent(importedText);
       setImagePublicUrls(importedImageUrls);
       setImportedProofUrl(importedProof);
+      setImportedRawContent(importedText);
       setTab("direct");
       toast.success("내 트윗을 성공적으로 가져왔습니다. 내용을 수정하여 정성을 더해보세요!");
     } catch (error) {
@@ -483,6 +486,7 @@ export default function WritePage() {
 
     let submitContent = "";
     let proofUrl: string | null = isEditMode ? editingProofUrl : importedProofUrl;
+    let submitRawContent: string | null = isEditMode ? null : importedRawContent;
 
     if (tab === "direct" || isEditMode) {
       const trimmed = content.trim();
@@ -492,6 +496,7 @@ export default function WritePage() {
         return;
       }
       submitContent = trimmed;
+      if (!submitRawContent) submitRawContent = trimmed;
     } else {
       if (!isXVerified) {
         setFormError("본인 인증 완료된 계정만 연동할 수 있습니다.");
@@ -511,6 +516,7 @@ export default function WritePage() {
       }
       proofUrl = normalized;
       submitContent = `X 글 가져오기: ${normalized}`;
+      if (!submitRawContent) submitRawContent = submitContent;
     }
 
     const response = await fetch("/api/activity-logs", {
@@ -524,7 +530,8 @@ export default function WritePage() {
         artist_id: artistId,
         activity_type_id: activityTypeId,
         content: submitContent,
-        proof_url: proofUrl,
+        raw_content: submitRawContent,
+        ...(proofUrl ? { proof_url: proofUrl } : {}),
         ...((tab === "direct" || isEditMode) && imagePublicUrls.length > 0
           ? { image_urls: imagePublicUrls }
           : {}),
@@ -618,6 +625,7 @@ export default function WritePage() {
                     onClick={() => {
                       setTab("direct");
                       setImportedProofUrl(null);
+                      setImportedRawContent(null);
                     }}
                     className={`h-10 rounded-lg text-sm font-medium transition ${
                       tab === "direct"

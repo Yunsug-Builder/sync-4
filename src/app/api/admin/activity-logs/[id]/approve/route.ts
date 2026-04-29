@@ -3,6 +3,7 @@ import {
   createSupabaseServiceRoleClient,
   hasSupabaseServiceRoleConfig,
 } from "@/lib/supabase-service";
+import { getAccessTokenFromRequest, isAdminByAccessToken } from "@/lib/admin-auth";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -61,6 +62,10 @@ function parseApproveRpcPayload(data: unknown): ApproveRpcPayload {
 }
 
 export async function POST(request: Request, context: Ctx) {
+  const token = getAccessTokenFromRequest(request);
+  if (!token || !(await isAdminByAccessToken(token))) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
   if (!hasSupabaseServiceRoleConfig()) {
     return NextResponse.json(
       {
