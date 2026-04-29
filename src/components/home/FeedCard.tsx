@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Globe, Heart, MessageCircle, Music2 } from "lucide-react";
+import { useState } from "react";
+import { Globe, Heart, Image as ImageIcon, MessageCircle, Music2 } from "lucide-react";
 
 export type ProofSourceMeta = {
   key: string;
@@ -90,10 +91,11 @@ export function getProofSourceMeta(proofUrl: string | null): ProofSourceMeta {
 
 export type FeedCardEntry = {
   id: string;
+  user_id: string;
   content: string;
   translations: Record<string, string> | null;
   proof_url: string | null;
-  image_url: string | null;
+  image_urls: string[];
   activityName: string;
   reward_vibes: number;
   sync_count: number;
@@ -104,6 +106,9 @@ export type LanguageCode = "KO" | "EN" | "ZH" | "JA";
 export type FeedCardProps = {
   entry: FeedCardEntry;
   preferredLanguage?: LanguageCode;
+  isMine?: boolean;
+  onDelete?: (id: string) => void;
+  deleting?: boolean;
 };
 
 function getTranslationByLanguage(
@@ -115,12 +120,21 @@ function getTranslationByLanguage(
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function FeedCard({ entry, preferredLanguage = "EN" }: FeedCardProps) {
+export function FeedCard({
+  entry,
+  preferredLanguage = "EN",
+  isMine = false,
+  onDelete,
+  deleting = false,
+}: FeedCardProps) {
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const detailHref = `/activities/${encodeURIComponent(entry.id)}`;
   const source = getProofSourceMeta(entry.proof_url);
   const { Icon } = source;
-  const imageUrl = entry.image_url?.trim() ?? "";
-  const hasImage = imageUrl.length > 0;
+  const hasImage = entry.image_urls.length > 0;
+  const safeImageIndex = hasImage ? currentImageIndex % entry.image_urls.length : 0;
+  const imageUrl = hasImage ? entry.image_urls[safeImageIndex]?.trim() ?? "" : "";
+  const extraImageCount = Math.max(0, entry.image_urls.length - 1);
   const translated = getTranslationByLanguage(entry.translations, preferredLanguage);
   const useTranslatedAsPrimary = preferredLanguage !== "KO" && translated.length > 0;
   const primaryText = useTranslatedAsPrimary ? translated : entry.content;
@@ -148,24 +162,80 @@ export function FeedCard({ entry, preferredLanguage = "EN" }: FeedCardProps) {
             <span className="rounded-full border border-fuchsia-400/25 bg-fuchsia-500/10 px-3 py-0.5 text-xs font-medium text-fuchsia-100">
               #{entry.activityName}
             </span>
+            {isMine && onDelete ? (
+              <button
+                type="button"
+                className="pointer-events-auto ml-auto rounded-lg border border-red-400/35 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={deleting}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onDelete(entry.id);
+                }}
+              >
+                {deleting ? "삭제 중..." : "삭제"}
+              </button>
+            ) : null}
           </div>
         </div>
 
-        <div className="relative aspect-video w-full overflow-hidden bg-zinc-950">
-          {hasImage ? (
-            // eslint-disable-next-line @next/next/no-img-element -- 외부 썸네일 URL 가변
-            <img
-              src={imageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          ) : (
-            <div
-              className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-700"
-              aria-hidden
-            />
-          )}
-        </div>
+        {hasImage ? (
+          <div className="relative aspect-video w-full overflow-hidden bg-zinc-950">
+            {/* eslint-disable-next-line @next/next/no-img-element -- 외부 썸네일 URL 가변 */}
+            <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+            {entry.image_urls.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="pointer-events-auto absolute left-3 top-1/2 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white transition hover:bg-black/75"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setCurrentImageIndex((prev) =>
+                      prev <= 0 ? entry.image_urls.length - 1 : prev - 1
+                    );
+                  }}
+                  aria-label="이전 이미지"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  className="pointer-events-auto absolute right-3 top-1/2 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white transition hover:bg-black/75"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setCurrentImageIndex((prev) => (prev + 1) % entry.image_urls.length);
+                  }}
+                  aria-label="다음 이미지"
+                >
+                  ›
+                </button>
+                <div className="pointer-events-auto absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5">
+                  {entry.image_urls.map((_, idx) => (
+                    <button
+                      key={`${entry.id}-dot-${idx}`}
+                      type="button"
+                      className={`h-2 w-2 rounded-full transition ${
+                        idx === safeImageIndex ? "bg-white" : "bg-white/40 hover:bg-white/70"
+                      }`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setCurrentImageIndex(idx);
+                      }}
+                      aria-label={`${idx + 1}번 이미지로 이동`}
+                    />
+                  ))}
+                </div>
+                <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/60 px-2 py-1 text-xs font-medium text-white">
+                  <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                  +{extraImageCount}
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="space-y-3 px-5 py-5">
           <p className="whitespace-pre-wrap text-base font-semibold leading-relaxed text-zinc-100">

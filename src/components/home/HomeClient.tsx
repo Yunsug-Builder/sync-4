@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 import { FeedCard } from "@/components/home/FeedCard";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 
 type FeedRowRaw = {
   id: string;
+  user_id: string;
   content: string;
   translations?: Record<string, string> | null;
   proof_url: string | null;
-  image_url?: string | null;
+  image_urls?: string[] | null;
   created_at: string;
   artist_id: string;
   total_reward_vibes?: number | null;
@@ -24,10 +26,11 @@ type FeedRowRaw = {
 
 type FeedEntry = {
   id: string;
+  user_id: string;
   content: string;
   translations: Record<string, string> | null;
   proof_url: string | null;
-  image_url: string | null;
+  image_urls: string[];
   created_at: string;
   activityName: string;
   reward_vibes: number;
@@ -52,12 +55,18 @@ function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
 
 function normalizeFeedRow(row: FeedRowRaw): FeedEntry {
   const at = firstOrNull(row.activity_types as { name: string } | null);
+  const imageUrls = Array.isArray(row.image_urls)
+    ? row.image_urls
+        .map((url) => (typeof url === "string" ? url.trim() : ""))
+        .filter((url) => url.length > 0)
+    : [];
   return {
     id: row.id,
+    user_id: row.user_id,
     content: row.content,
     translations: row.translations ?? null,
     proof_url: row.proof_url,
-    image_url: row.image_url ?? null,
+    image_urls: imageUrls,
     created_at: row.created_at,
     activityName: at?.name?.trim() || "활동",
     reward_vibes: Math.max(0, Number(row.total_reward_vibes ?? 0)),
@@ -76,6 +85,7 @@ export default function HomeClient() {
   const [selectedArtistId, setSelectedArtistId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadingFeed, setLoadingFeed] = useState(true);
+  const [deletingEntryId, setDeletingEntryId] = useState<string | null>(null);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -151,10 +161,11 @@ export default function HomeClient() {
       .select(
         `
         id,
+        user_id,
         content,
         translations,
         proof_url,
-        image_url,
+        image_urls,
         created_at,
         artist_id,
         total_reward_vibes,
@@ -184,6 +195,41 @@ export default function HomeClient() {
     setLoadingFeed(false);
   }, [selectedArtistId]);
 
+  const handleDeleteEntry = useCallback(
+    async (entryId: string) => {
+      if (!session?.access_token) {
+        toast.error("로그인이 필요합니다.");
+        return;
+      }
+      const confirmed = window.confirm("이 활동을 삭제 처리하시겠습니까?");
+      if (!confirmed) return;
+
+      setDeletingEntryId(entryId);
+      try {
+        const response = await fetch("/api/activity-logs", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ id: entryId }),
+        });
+        const body = (await response.json()) as { ok?: boolean; error?: string };
+        if (!response.ok || !body.ok) {
+          toast.error(body.error ?? "삭제 처리에 실패했습니다.");
+          return;
+        }
+        toast.success("활동이 삭제 처리되었습니다.");
+        setEntries((prev) => prev.filter((entry) => entry.id !== entryId));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "삭제 처리 중 오류가 발생했습니다.");
+      } finally {
+        setDeletingEntryId(null);
+      }
+    },
+    [session?.access_token]
+  );
+
   useEffect(() => {
     void loadFeed();
   }, [loadFeed]);
@@ -206,7 +252,7 @@ export default function HomeClient() {
   }, [entries, preferredLanguage]);
 
   const loggedIn = Boolean(session?.user);
-  const submitHref = loggedIn ? "/activities/submit" : "/login";
+  const submitHref = loggedIn ? "/write" : "/login";
   const writeHref = loggedIn ? "/write" : "/login";
   const meLabel =
     me?.nickname?.trim() ||
@@ -312,6 +358,9 @@ export default function HomeClient() {
                   key={entry.id}
                   entry={entry}
                   preferredLanguage={preferredLanguage}
+                  isMine={session?.user?.id != null && entry.user_id === session.user.id}
+                  onDelete={handleDeleteEntry}
+                  deleting={deletingEntryId === entry.id}
                 />
               );
             })}

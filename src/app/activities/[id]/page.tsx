@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
+import { Image as ImageIcon } from "lucide-react";
+import { toast } from "sonner";
 import { ActivityCommentsSection } from "@/components/activities/ActivityCommentsSection";
 import { ActivityRewardSection } from "@/components/activities/ActivityRewardSection";
 import { ActivitySyncControl } from "@/components/activities/ActivitySyncControl";
 import type { LanguageCode } from "@/components/home/FeedCard";
 import { useLanguage } from "@/components/providers/LanguageProvider";
+import { markActivityViewBumped, shouldSkipActivityViewBump } from "@/lib/view-logic";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
 
 type Row = {
@@ -15,7 +18,7 @@ type Row = {
   user_id: string;
   content: string;
   translations?: Record<string, unknown> | null;
-  image_url?: string | null;
+  image_urls?: string[] | null;
   proof_url: string | null;
   status: string;
   created_at: string;
@@ -45,7 +48,7 @@ type DetailData = {
   authorUserId: string;
   content: string;
   translations: Record<string, unknown> | null;
-  imageUrl: string | null;
+  imageUrls: string[];
   proofUrl: string | null;
   nickname: string;
   activityName: string;
@@ -57,38 +60,17 @@ type DetailData = {
 
 export default function ActivityDetailPage() {
   const { language: selectedLanguage, setLanguage } = useLanguage();
+  const router = useRouter();
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
-
-  const viewBumpForIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    viewBumpForIdRef.current = null;
-  }, [id]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DetailData | null>(null);
   const [syncCount, setSyncCount] = useState(0);
-  /** `undefined`: 아직 세션 확인 전, `null`: 비로그인, 문자열: 로그인 uid */
-  const [viewerUserId, setViewerUserId] = useState<string | null | undefined>(
-    undefined
-  );
-
-  useEffect(() => {
-    const supabase = getSupabaseBrowserClient();
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      setViewerUserId(user?.id ?? null);
-    });
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setViewerUserId(session?.user?.id ?? null);
-    });
-    return () => {
-      subscription.unsubscribe();
-    };
-  }, []);
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id.trim()) {
@@ -117,7 +99,7 @@ export default function ActivityDetailPage() {
           user_id,
           content,
           translations,
-          image_url,
+          image_urls,
           proof_url,
           status,
           created_at,
@@ -157,11 +139,16 @@ export default function ActivityDetailPage() {
           ? r.view_count
           : 0;
 
+      const imageUrls = Array.isArray(r.image_urls)
+        ? r.image_urls
+            .map((url) => (typeof url === "string" ? url.trim() : ""))
+            .filter((url) => url.length > 0)
+        : [];
       setData({
         authorUserId: r.user_id,
         content: r.content ?? "",
         translations: r.translations ?? null,
-        imageUrl: r.image_url?.trim() || null,
+        imageUrls,
         proofUrl: r.proof_url,
         nickname: prof?.nickname?.trim() || "익명",
         activityName: at?.name?.trim() || "활동",
@@ -171,6 +158,7 @@ export default function ActivityDetailPage() {
         isSettled: Boolean(r.is_settled),
       });
       setLoading(false);
+      setCurrentImageIndex(0);
     })();
 
     return () => {
@@ -180,63 +168,52 @@ export default function ActivityDetailPage() {
 
   useEffect(() => {
     const logId = id.trim();
-    if (!logId || !data || data.status !== "approved") {
-      return;
-    }
-    if (viewBumpForIdRef.current === logId) {
-      return;
-    }
+    if (!logId) return;
 
-    // 비로그인 상태에서는 조회수 RPC를 호출하지 않는다.
-    if (!viewerUserId) {
-      console.log("[increment_view_count_v2] skip: viewer not logged in", {
-        p_log_id: logId,
-        p_user_id: viewerUserId ?? null,
-      });
-      return;
-    }
-
-    viewBumpForIdRef.current = logId;
-
+    let cancelled = false;
     const supabase = getSupabaseBrowserClient();
     void (async () => {
-      if (viewerUserId === data.authorUserId) {
-        console.log("[increment_view_count_v2] skip: own post", {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (cancelled) return;
+
+      const userId = user?.id ?? null;
+      setViewerUserId(userId);
+      const viewerKey = userId ?? "anon";
+      if (shouldSkipActivityViewBump(logId, viewerKey)) {
+        console.log("[increment_view_count_v4] skip: client 30m cooldown", {
           p_log_id: logId,
-          p_user_id: viewerUserId,
+          p_user_id: userId,
+          viewerKey,
         });
         return;
       }
 
-      console.log("[increment_view_count_v2] before rpc", {
+      const rpcPayload: { p_log_id: string; p_user_id: string | null } = {
         p_log_id: logId,
-        p_user_id: viewerUserId,
-      });
-
-      const { error: rpcErr } = await supabase.rpc("increment_view_count_v2", {
-        p_log_id: logId,
-        p_user_id: viewerUserId,
-      });
-
+        p_user_id: userId,
+      };
+      console.log("[increment_view_count_v4] p_user_id", rpcPayload.p_user_id);
+      console.log("[increment_view_count_v4] before rpc", rpcPayload);
+      const { error: rpcErr } = await supabase.rpc("increment_view_count_v4", rpcPayload);
+      if (cancelled) return;
       if (rpcErr) {
-        console.log("[increment_view_count_v2] rpc error", {
-          p_log_id: logId,
-          p_user_id: viewerUserId,
+        console.log("[increment_view_count_v4] rpc error", {
+          ...rpcPayload,
           error: rpcErr.message,
         });
         return;
       }
 
-      console.log("[increment_view_count_v2] after rpc", {
-        p_log_id: logId,
-        p_user_id: viewerUserId,
-      });
-
+      markActivityViewBumped(logId, viewerKey);
+      console.log("[increment_view_count_v4] after rpc", rpcPayload);
       const { data: vcRow } = await supabase
         .from("activity_logs")
         .select("view_count")
         .eq("id", logId)
         .maybeSingle();
+      if (cancelled) return;
       const nextVc =
         vcRow && typeof (vcRow as { view_count?: number }).view_count === "number"
           ? (vcRow as { view_count: number }).view_count
@@ -245,9 +222,18 @@ export default function ActivityDetailPage() {
         setData((d) => (d ? { ...d, viewCount: nextVc } : d));
       }
     })();
-  }, [id, data, viewerUserId]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   const isApproved = data?.status === "approved";
+  const isMine = Boolean(data?.authorUserId && viewerUserId && data.authorUserId === viewerUserId);
+  const hasImages = (data?.imageUrls.length ?? 0) > 0;
+  const safeImageIndex =
+    hasImages && data ? currentImageIndex % data.imageUrls.length : 0;
+  const currentImageUrl = hasImages && data ? data.imageUrls[safeImageIndex] : null;
   const selectedTranslation = data ? getTranslation(data.translations, selectedLanguage) : "";
   const useTranslatedAsPrimary =
     Boolean(data) && selectedLanguage !== "KO" && selectedTranslation.length > 0;
@@ -265,6 +251,46 @@ export default function ActivityDetailPage() {
         }
       });
   }, [id]);
+
+  const handleDelete = useCallback(async () => {
+    const logId = id.trim();
+    if (!logId || !isMine) return;
+    const confirmed = window.confirm("이 활동을 삭제 처리하시겠습니까?");
+    if (!confirmed) return;
+
+    const supabase = getSupabaseBrowserClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      toast.error("로그인이 필요합니다.");
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const response = await fetch("/api/activity-logs", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ id: logId }),
+      });
+      const body = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !body.ok) {
+        toast.error(body.error ?? "삭제 처리에 실패했습니다.");
+        return;
+      }
+      toast.success("활동이 삭제 처리되었습니다.");
+      router.replace("/");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "삭제 처리 중 오류가 발생했습니다.");
+    } finally {
+      setDeleting(false);
+    }
+  }, [id, isMine, router]);
 
   useEffect(() => {
     if (!id.trim() || data?.status !== "approved") {
@@ -312,6 +338,24 @@ export default function ActivityDetailPage() {
                 <span className="rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-4 py-1 text-sm font-medium text-fuchsia-100">
                   {data.activityName}
                 </span>
+                {isMine ? (
+                  <div className="ml-auto flex items-center gap-2">
+                    <Link
+                      href={`/write?edit=${encodeURIComponent(id.trim())}`}
+                      className="inline-flex h-8 items-center justify-center rounded-lg border border-white/20 bg-zinc-900 px-3 text-xs font-medium text-zinc-200 transition hover:border-fuchsia-400/40"
+                    >
+                      수정
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => void handleDelete()}
+                      disabled={deleting}
+                      className="inline-flex h-8 items-center justify-center rounded-lg border border-red-400/35 bg-red-500/10 px-3 text-xs font-medium text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deleting ? "삭제 중..." : "삭제"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
@@ -348,23 +392,59 @@ export default function ActivityDetailPage() {
             </header>
 
             <div className="py-10">
-              <div className="mb-6">
-                <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-900">
-                  {data.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- 외부 이미지 URL 가변
-                    <img
-                      src={data.imageUrl}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div
-                      className="h-full w-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-700"
-                      aria-hidden
-                    />
-                  )}
+              {hasImages && currentImageUrl ? (
+                <div className="mb-6">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-zinc-900">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- 외부 이미지 URL 가변 */}
+                    <img src={currentImageUrl} alt="" className="h-full w-full object-cover" />
+                    {(data.imageUrls.length ?? 0) > 1 ? (
+                      <>
+                        <button
+                          type="button"
+                          className="absolute left-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white transition hover:bg-black/75"
+                          onClick={() =>
+                            setCurrentImageIndex((prev) =>
+                              prev <= 0 ? data.imageUrls.length - 1 : prev - 1
+                            )
+                          }
+                          aria-label="이전 이미지"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-black/55 text-white transition hover:bg-black/75"
+                          onClick={() =>
+                            setCurrentImageIndex((prev) => (prev + 1) % data.imageUrls.length)
+                          }
+                          aria-label="다음 이미지"
+                        >
+                          ›
+                        </button>
+                        <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
+                          {data.imageUrls.map((_, idx) => (
+                            <button
+                              key={`${data.authorUserId}-detail-dot-${idx}`}
+                              type="button"
+                              className={`h-2 w-2 rounded-full transition ${
+                                idx === safeImageIndex
+                                  ? "bg-white"
+                                  : "bg-white/45 hover:bg-white/70"
+                              }`}
+                              onClick={() => setCurrentImageIndex(idx)}
+                              aria-label={`${idx + 1}번 이미지로 이동`}
+                            />
+                          ))}
+                        </div>
+                        <div className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border border-white/20 bg-black/60 px-2 py-1 text-xs font-medium text-white">
+                          <ImageIcon className="h-3.5 w-3.5" aria-hidden />
+                          +{Math.max(0, data.imageUrls.length - 1)}
+                        </div>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+              ) : null}
               <div className="mb-6">
                 <div className="inline-flex items-center rounded-xl border border-zinc-800 bg-zinc-900/70 p-1">
                   {LANGUAGE_TABS.map((lang) => {
