@@ -81,7 +81,8 @@ function normalizeImageUrls(
 }
 
 const ACTIVITY_IMAGES_BUCKET = "activity-images";
-const GEMINI_MODEL = "gemini-1.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite";
 const AI_REVIEW_SYSTEM_PROMPT = `
 당신은 SYNC 서비스의 관리자 전용 AI 심사 보조 엔진이다.
 사용자 게시글의 품질을 냉정하고 엄격하게 평가하라.
@@ -220,22 +221,42 @@ async function evaluateWithGemini(params: {
       null,
       2
     );
-    const response = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
+    let response: Awaited<ReturnType<typeof model.generateContent>>;
+    try {
+      response = await model.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
         },
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
-      systemInstruction: AI_REVIEW_SYSTEM_PROMPT,
-    });
-    const text = response.response.text();
-    const parsed = JSON.parse(text) as unknown;
+        systemInstruction: AI_REVIEW_SYSTEM_PROMPT,
+      });
+    } catch {
+      console.warn("[메인 모델 실패, Lite 모델로 Fallback 시도 중...]");
+      const fallbackModel = genAI.getGenerativeModel({ model: GEMINI_FALLBACK_MODEL });
+      response = await fallbackModel.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }],
+          },
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
+        systemInstruction: AI_REVIEW_SYSTEM_PROMPT,
+      });
+    }
+    const rawText = response.response.text();
+    console.log("[Gemini 원본 텍스트]:", rawText);
+    const parsed = JSON.parse(rawText) as unknown;
     return { ok: true, result: normalizeAiEvaluation(parsed) };
   } catch (error) {
+    console.error("[AI 심사 치명적 에러]:", error);
     return {
       ok: false,
       error: error instanceof Error ? error.message : "Gemini 심사 호출에 실패했습니다.",

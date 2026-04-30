@@ -32,6 +32,18 @@ type ActivityTypeRow = {
 };
 
 type WriteTab = "direct" | "x_import";
+let inflightUserRequest:
+  | Promise<Awaited<ReturnType<ReturnType<typeof getSupabaseBrowserClient>["auth"]["getUser"]>>>
+  | null = null;
+
+async function getUserSafely(supabase: ReturnType<typeof getSupabaseBrowserClient>) {
+  if (!inflightUserRequest) {
+    inflightUserRequest = supabase.auth.getUser().finally(() => {
+      inflightUserRequest = null;
+    });
+  }
+  return inflightUserRequest;
+}
 
 function normalizeHandle(raw: string): string {
   return raw.trim().replace(/^@+/, "").toLowerCase();
@@ -131,14 +143,17 @@ export default function WritePage() {
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
+    let isActive = true;
     const load = async () => {
+      if (!isActive) return;
       setLoadingCatalog(true);
       setLoadError(null);
 
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getUserSafely(supabase);
 
+      if (!isActive) return;
       if (!user?.id) {
         setLoadError("로그인 정보를 찾을 수 없습니다.");
         setLoadingCatalog(false);
@@ -155,6 +170,7 @@ export default function WritePage() {
           .maybeSingle(),
       ]);
 
+      if (!isActive) return;
       if (artistsRes.error) {
         setLoadError(artistsRes.error.message);
         setLoadingCatalog(false);
@@ -184,6 +200,9 @@ export default function WritePage() {
     };
 
     void load();
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -192,15 +211,16 @@ export default function WritePage() {
       return;
     }
     const supabase = getSupabaseBrowserClient();
-    let cancelled = false;
+    let isActive = true;
     void (async () => {
+      if (!isActive) return;
       setLoadingEditDraft(true);
       setFormError(null);
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await getUserSafely(supabase);
       if (!user?.id) {
-        if (!cancelled) {
+        if (isActive) {
           setFormError("로그인이 필요합니다.");
           setLoadingEditDraft(false);
         }
@@ -212,7 +232,7 @@ export default function WritePage() {
         .eq("id", editId)
         .eq("user_id", user.id)
         .maybeSingle();
-      if (cancelled) return;
+      if (!isActive) return;
       if (error) {
         setFormError(error.message);
         setLoadingEditDraft(false);
@@ -238,7 +258,7 @@ export default function WritePage() {
       setLoadingEditDraft(false);
     })();
     return () => {
-      cancelled = true;
+      isActive = false;
     };
   }, [editId, isEditMode]);
 
