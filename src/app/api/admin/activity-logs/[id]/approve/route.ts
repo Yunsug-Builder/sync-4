@@ -14,13 +14,24 @@ type ApproveRpcPayload = {
 };
 
 type ApproveRequestBody = {
+  status?: string;
+  /** 관리자가 확정한 지급 바이브 (우선) */
+  rewarded_vibe?: number;
+  /** @deprecated rewarded_vibe 사용 */
   final_vibes?: number;
   ai_evaluation?: Record<string, unknown> | null;
 };
 
-function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
-  if (v == null) return null;
-  return Array.isArray(v) ? (v[0] ?? null) : v;
+const MAX_REWARD_VIBES = 1_000_000;
+
+function normalizeRewardedVibe(body: ApproveRequestBody): number {
+  const raw =
+    typeof body.rewarded_vibe === "number" && Number.isFinite(body.rewarded_vibe)
+      ? body.rewarded_vibe
+      : typeof body.final_vibes === "number" && Number.isFinite(body.final_vibes)
+        ? body.final_vibes
+        : 0;
+  return Math.max(0, Math.min(MAX_REWARD_VIBES, Math.floor(raw)));
 }
 
 /**
@@ -62,112 +73,127 @@ function parseApproveRpcPayload(data: unknown): ApproveRpcPayload {
 }
 
 export async function POST(request: Request, context: Ctx) {
-  const token = getAccessTokenFromRequest(request);
-  if (!token || !(await isAdminByAccessToken(token))) {
-    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
-  }
-  if (!hasSupabaseServiceRoleConfig()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error:
-          "SUPABASE_SERVICE_ROLE_KEY 가 설정되지 않았습니다. 관리자 API는 서비스 롤 키가 필요합니다.",
-      },
-      { status: 503 }
-    );
-  }
-
-  const { id } = await context.params;
-  const supabase = createSupabaseServiceRoleClient();
-  let requestBody: ApproveRequestBody = {};
-
   try {
-    requestBody = (await request.json()) as ApproveRequestBody;
-  } catch {
-    requestBody = {};
-  }
-
-  const finalVibes =
-    typeof requestBody.final_vibes === "number" &&
-    Number.isFinite(requestBody.final_vibes)
-      ? Math.max(0, Math.floor(requestBody.final_vibes))
-      : 0;
-  const aiEvaluation =
-    requestBody.ai_evaluation != null &&
-    typeof requestBody.ai_evaluation === "object"
-      ? requestBody.ai_evaluation
-      : null;
-
-  const { data: rpcData, error: rpcError } = await supabase.rpc(
-    "admin_approve_activity_log_v2",
-    {
-      p_log_id: id,
-      p_final_vibes: finalVibes,
-      p_ai_evaluation: aiEvaluation,
+    const token = getAccessTokenFromRequest(request);
+    if (!token || !(await isAdminByAccessToken(token))) {
+      return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
     }
-  );
+    if (!hasSupabaseServiceRoleConfig()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "SUPABASE_SERVICE_ROLE_KEY 가 설정되지 않았습니다. 관리자 API는 서비스 롤 키가 필요합니다.",
+        },
+        { status: 503 }
+      );
+    }
 
-  if (rpcError) {
-    console.error("[admin/approve] rpc", rpcError);
-    return NextResponse.json(
-      { ok: false, error: rpcError.message },
-      { status: 500 }
+    const { id } = await context.params;
+    const supabase = createSupabaseServiceRoleClient();
+    let requestBody: ApproveRequestBody = {};
+
+    try {
+      requestBody = (await request.json()) as ApproveRequestBody;
+    } catch {
+      requestBody = {};
+    }
+
+    if (
+      typeof requestBody.status === "string" &&
+      requestBody.status.trim() !== "" &&
+      requestBody.status.trim().toLowerCase() !== "approved"
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "invalid_status" },
+        { status: 400 }
+      );
+    }
+
+    const rewardedVibe = normalizeRewardedVibe(requestBody);
+    const aiEvaluation =
+      requestBody.ai_evaluation != null &&
+      typeof requestBody.ai_evaluation === "object"
+        ? requestBody.ai_evaluation
+        : null;
+
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      "admin_approve_activity_log_v2",
+      {
+        p_log_id: id,
+        p_final_vibes: rewardedVibe,
+        p_ai_evaluation: aiEvaluation,
+      }
     );
-  }
 
-  const { data: row, error: rowError } = await supabase
-    .from("activity_logs")
-    .select("status, activity_types ( base_vibes )")
-    .eq("id", id)
-    .maybeSingle();
+    if (rpcError) {
+      console.error("[admin/approve] rpc", rpcError);
+      return NextResponse.json(
+        { ok: false, error: rpcError.message },
+        { status: 500 }
+      );
+    }
 
-  if (rowError) {
-    console.error("[admin/approve] select", rowError);
-    return NextResponse.json(
-      { ok: false, error: rowError.message },
-      { status: 500 }
-    );
-  }
+    const { data: row, error: rowError } = await supabase
+      .from("activity_logs")
+      .select("status, total_reward_vibes")
+      .eq("id", id)
+      .maybeSingle();
 
-  if (!row) {
+    if (rowError) {
+      console.error("[admin/approve] select", rowError);
+      return NextResponse.json(
+        { ok: false, error: rowError.message },
+        { status: 500 }
+      );
+    }
+
+    if (!row) {
+      const payload = parseApproveRpcPayload(rpcData);
+      return NextResponse.json(
+        { ok: false, error: payload.error ?? "not_found" },
+        { status: 404 }
+      );
+    }
+
     const payload = parseApproveRpcPayload(rpcData);
-    return NextResponse.json(
-      { ok: false, error: payload.error ?? "not_found" },
-      { status: 404 }
-    );
-  }
+    const vibesAddedFromRow =
+      typeof row.total_reward_vibes === "number" && Number.isFinite(row.total_reward_vibes)
+        ? Math.floor(row.total_reward_vibes)
+        : typeof payload.vibes_added === "number" && Number.isFinite(payload.vibes_added)
+          ? Math.floor(payload.vibes_added)
+          : rewardedVibe;
 
-  const at = firstOrNull(
-    row.activity_types as { base_vibes?: number } | null | undefined
-  );
-  const vibesAdded =
-    typeof at?.base_vibes === "number" ? at.base_vibes : undefined;
+    if (row.status === "approved") {
+      return NextResponse.json({
+        ok: true,
+        vibes_added: vibesAddedFromRow,
+      });
+    }
 
-  if (row.status === "approved") {
-    return NextResponse.json({
-      ok: true,
-      vibes_added: vibesAdded,
-    });
-  }
+    if (row.status === "pending") {
+      const code = payload.error === "not_found_or_not_pending" ? 404 : 409;
+      return NextResponse.json(
+        {
+          ok: false,
+          error: payload.error ?? "approve_failed",
+        },
+        { status: code }
+      );
+    }
 
-  const payload = parseApproveRpcPayload(rpcData);
-
-  if (row.status === "pending") {
-    const code = payload.error === "not_found_or_not_pending" ? 404 : 409;
     return NextResponse.json(
       {
         ok: false,
-        error: payload.error ?? "approve_failed",
+        error: "unexpected_status",
       },
-      { status: code }
+      { status: 409 }
+    );
+  } catch (e) {
+    console.error("[admin/approve]", e);
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "internal_error" },
+      { status: 500 }
     );
   }
-
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "unexpected_status",
-    },
-    { status: 409 }
-  );
 }

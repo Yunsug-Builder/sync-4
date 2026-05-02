@@ -560,11 +560,13 @@ export default function WritePage() {
 
     const body = (await response.json()) as {
       ok?: boolean;
+      success?: boolean;
       message?: string;
       error?: string;
     };
 
-    if (!response.ok || !body.ok) {
+    const succeeded = body.success === true || body.ok === true;
+    if (!response.ok || !succeeded) {
       const message = mapInsertError(body.error ?? "글 등록에 실패했습니다.");
       setFormError(message);
       toast.error(message);
@@ -572,8 +574,17 @@ export default function WritePage() {
       return;
     }
 
-    toast.success(isEditMode ? "수정이 저장되어 재심사 대기 상태가 되었습니다." : "글이 성공적으로 등록되었습니다.");
-    router.replace(isEditMode ? `/activities/${encodeURIComponent(editId)}` : "/");
+    if (isEditMode) {
+      toast.success("수정이 저장되어 재심사 대기 상태가 되었습니다.");
+      router.replace(`/activities/${encodeURIComponent(editId)}`);
+    } else {
+      toast.success("성공적으로 신청되었습니다.", {
+        description: "심사 승인 후 피드에 업로드됩니다.",
+        duration: 4500,
+      });
+      router.push("/");
+    }
+    setSubmitting(false);
   };
 
   return (
@@ -819,12 +830,14 @@ export default function WritePage() {
                   : imageUploading
                   ? "업로드 중..."
                   : submitting
-                    ? "등록 중..."
+                    ? !isEditMode
+                      ? "신청 중..."
+                      : "저장 중..."
                     : !isEditMode && tab === "x_import"
                       ? "트윗 가져오기 후 등록 가능"
                       : isEditMode
                         ? "수정 저장하기"
-                        : "등록하기"}
+                        : "등록 신청하기"}
               </button>
             </form>
           </div>

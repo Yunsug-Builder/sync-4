@@ -34,6 +34,12 @@ function formatDate(iso: string) {
   }
 }
 
+function suggestedVibeFromAiEvaluation(ai: Record<string, unknown> | null): number {
+  if (!ai) return 0;
+  const v = typeof ai.suggested_vibe === "number" ? ai.suggested_vibe : Number(ai.suggested_vibe);
+  return Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+}
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const supabase = getSupabaseBrowserClient();
   const { data } = await supabase.auth.getSession();
@@ -85,7 +91,8 @@ export default function AdminDashboardClient() {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify({
-        final_vibes: row.activity_types?.base_vibes ?? 0,
+        status: "approved",
+        rewarded_vibe: suggestedVibeFromAiEvaluation(row.ai_evaluation),
         ai_evaluation: row.ai_evaluation,
       }),
     });

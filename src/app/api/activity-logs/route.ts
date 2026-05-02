@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createSupabaseAnonClient } from "@/lib/supabase";
@@ -28,8 +28,12 @@ type UpdateBody = {
   image_urls?: unknown;
 };
 
+type AiRecommendation = "APPROVE" | "REVIEW" | "REJECT";
+
 type AiEvaluationResult = {
   score: number;
+  recommendation: AiRecommendation;
+  suggested_vibe: number;
   pros: string[];
   cons: string[];
   reasoning: string;
@@ -84,23 +88,101 @@ const ACTIVITY_IMAGES_BUCKET = "activity-images";
 const GEMINI_MODEL = "gemini-2.5-flash";
 const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite";
 const AI_REVIEW_SYSTEM_PROMPT = `
-당신은 SYNC 서비스의 관리자 전용 AI 심사 보조 엔진이다.
-사용자 게시글의 품질을 냉정하고 엄격하게 평가하라.
+당신은 아이돌/아티스트 팬덤 커뮤니티의 깐깐하지만 유연한 콘텐츠 심사역입니다. 유저의 글, 사진, 그리고 [제출된 아티스트와 카테고리] 메타데이터를 종합적으로 교차 검증합니다.
 
-평가 기준(총 100점):
-1) 아티스트 관련성: 40점
-2) 글의 정성(구체성/맥락/완성도): 40점
-3) 독창성(개인 경험/차별성): 20점
+[엄격한 0~39점 (REJECT) 기준]
+
+메타데이터 불일치: 텍스트/사진이 [제출된 아티스트]나 [카테고리]와 전혀 무관한 경우.
+
+어뷰징: 'ㅋㅋㅋㅋ', 'ㅇㅇㅇ' 등 의미 없는 자음/모음 도배, 타 사이트 광고, 무의미한 복사+붙여넣기.
+
+심각한 규정 위반: 아티스트에 대한 심각한 명예훼손, 욕설, 성인물, 사회적 논란을 조장하는 악의적 게시물.
+
+[⚠️ AI 심사역의 절대 주의사항 (팩트 체크 금지)]
+
+당신은 최신 인터넷 정보에 대한 실시간 검색 능력이 없습니다. 따라서 사용자가 작성한 아티스트의 앨범 발매일, 성과, 차트 기록, 활동 내역에 대해 당신의 과거 지식을 기준으로 "허위 사실"이나 "망상"이라고 임의로 팩트 체크하고 감점하지 마십시오.
+
+팬덤 커뮤니티 특성상 루머, 기대감, 비공식 정보가 포함될 수 있습니다. 악의적인 명예훼손이나 스팸이 아니라면, 글의 사실 여부보다는 **'아티스트에 대한 정성과 맥락의 일치도'**만을 평가하여 관대하게 APPROVE(60점 이상) 처리하십시오.
+
+[애매한 40~59점 (REVIEW) 기준]
+
+아티스트와 관련은 있으나, 글이 단 한두 단어로 너무 성의가 없거나 사진의 화질/내용이 판별하기 어려운 경우.
+
+비판적인 의견이 담겨 있어 악플인지 정당한 비판인지 사람의 수동 판단이 필요한 경우.
+
+[관대한 60~100점 (APPROVE) 기준]
+
+팬심 인정: 글이 짧거나 문법이 완벽하지 않아도, 아티스트를 향한 순수한 응원, 일상적인 감상, 앓는 글 등 진정성이 보이면 승인합니다.
+
+카테고리 부합: 스트리밍 인증, 굿즈 구매 등 해당 카테고리 목적에 맞는 사진과 글이 포함된 경우 점수를 부여합니다.
+
+[결과 산출 기준]
+
+score: 위 기준에 따른 0~100점.
+
+recommendation: 점수 구간에 따라 "REJECT", "REVIEW", "APPROVE" 중 택 1.
+
+suggested_vibe: APPROVE 구간(60점 이상)일 경우 글의 정성과 사진 퀄리티에 비례하여 10~100 사이의 숫자를 제안. REJECT나 REVIEW 구간은 0으로 고정.
 
 반드시 JSON만 반환하라. 마크다운/설명문 금지.
 JSON 스키마:
 {
-  "score": number,         // 0~100 정수
-  "pros": string[],        // 강점
-  "cons": string[],        // 약점
-  "reasoning": string      // 점수 근거 요약
+  "score": number,
+  "recommendation": "APPROVE" | "REVIEW" | "REJECT",
+  "suggested_vibe": number,
+  "pros": string[],
+  "cons": string[],
+  "reasoning": string
 }
 `;
+
+function mimeTypeForGeminiInline(url: string, contentType: string | null): string {
+  const normalizedType = (contentType ?? "").toLowerCase();
+  if (normalizedType.includes("image/png")) return "image/png";
+  if (normalizedType.includes("image/webp")) return "image/webp";
+  if (normalizedType.includes("image/gif")) return "image/gif";
+  if (normalizedType.includes("image/jpeg") || normalizedType.includes("image/jpg")) return "image/jpeg";
+  try {
+    const parsed = new URL(url);
+    const ext = parsed.pathname.split(".").pop()?.toLowerCase() ?? "";
+    if (ext === "png") return "image/png";
+    if (ext === "webp") return "image/webp";
+    if (ext === "gif") return "image/gif";
+    if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  } catch {
+    // noop
+  }
+  return "image/jpeg";
+}
+
+async function fetchImageUrlsAsGeminiInlineParts(
+  imageUrls: string[]
+): Promise<
+  | { ok: true; parts: { inlineData: { mimeType: string; data: string } }[] }
+  | { ok: false; error: string }
+> {
+  const parts: { inlineData: { mimeType: string; data: string } }[] = [];
+  for (const url of imageUrls) {
+    let res: Response;
+    try {
+      res = await fetch(url, { method: "GET", cache: "no-store" });
+    } catch {
+      return { ok: false, error: "첨부 이미지를 불러오는 중 네트워크 오류가 발생했습니다." };
+    }
+    if (!res.ok) {
+      return { ok: false, error: `첨부 이미지 다운로드에 실패했습니다. (status: ${res.status})` };
+    }
+    const contentType = res.headers.get("content-type");
+    if (!contentType?.toLowerCase().startsWith("image/")) {
+      return { ok: false, error: "첨부 URL 중 이미지가 아닌 응답이 포함되어 있습니다." };
+    }
+    const mimeType = mimeTypeForGeminiInline(url, contentType);
+    const arrayBuffer = await res.arrayBuffer();
+    const data = Buffer.from(arrayBuffer).toString("base64");
+    parts.push({ inlineData: { mimeType, data } });
+  }
+  return { ok: true, parts };
+}
 
 function inferImageExtension(url: string, contentType: string | null): string {
   const normalizedType = (contentType ?? "").toLowerCase();
@@ -186,10 +268,62 @@ async function mirrorExternalActivityImages(params: {
   return { ok: true, urls };
 }
 
+function recommendationForScore(score: number): AiRecommendation {
+  if (score >= 60) return "APPROVE";
+  if (score >= 40) return "REVIEW";
+  return "REJECT";
+}
+
+async function fetchArtistAndActivityTypeNames(
+  client: SupabaseClient,
+  artistId: string,
+  activityTypeId: string
+): Promise<{ artistName: string; activityTypeName: string }> {
+  const [artistRes, typeRes] = await Promise.all([
+    client.from("artists").select("name").eq("id", artistId).maybeSingle(),
+    client.from("activity_types").select("name").eq("id", activityTypeId).maybeSingle(),
+  ]);
+  if (artistRes.error) console.warn("[AI 심사] artists 조회 경고:", artistRes.error.message);
+  if (typeRes.error) console.warn("[AI 심사] activity_types 조회 경고:", typeRes.error.message);
+  const artistName =
+    typeof artistRes.data?.name === "string" && artistRes.data.name.trim()
+      ? artistRes.data.name.trim()
+      : "(이름 미확인)";
+  const activityTypeName =
+    typeof typeRes.data?.name === "string" && typeRes.data.name.trim()
+      ? typeRes.data.name.trim()
+      : "(카테고리 미확인)";
+  return { artistName, activityTypeName };
+}
+
+function createAiReviewLookupClient(accessToken: string): SupabaseClient | null {
+  if (hasSupabaseServiceRoleConfig()) {
+    return createSupabaseServiceRoleClient();
+  }
+  const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!projectUrl || !anonKey) return null;
+  return createClient(projectUrl, anonKey, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 function normalizeAiEvaluation(raw: unknown): AiEvaluationResult {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const scoreRaw = typeof obj.score === "number" ? obj.score : Number(obj.score);
   const score = Number.isFinite(scoreRaw) ? Math.max(0, Math.min(100, Math.round(scoreRaw))) : 0;
+  const recommendation = recommendationForScore(score);
+  const vibeRaw =
+    typeof obj.suggested_vibe === "number" ? obj.suggested_vibe : Number(obj.suggested_vibe);
+  let suggested_vibe = Number.isFinite(vibeRaw) ? Math.round(vibeRaw) : 0;
+  if (recommendation === "APPROVE") {
+    suggested_vibe = Number.isFinite(vibeRaw)
+      ? Math.max(10, Math.min(100, Math.round(vibeRaw)))
+      : Math.max(10, Math.min(100, score));
+  } else {
+    suggested_vibe = 0;
+  }
   const pros = Array.isArray(obj.pros)
     ? obj.pros.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean)
     : [];
@@ -197,37 +331,58 @@ function normalizeAiEvaluation(raw: unknown): AiEvaluationResult {
     ? obj.cons.filter((v): v is string => typeof v === "string").map((v) => v.trim()).filter(Boolean)
     : [];
   const reasoning = typeof obj.reasoning === "string" ? obj.reasoning.trim() : "";
-  return { score, pros, cons, reasoning };
+  return { score, recommendation, suggested_vibe, pros, cons, reasoning };
 }
 
 async function evaluateWithGemini(params: {
   content: string;
   rawContent: string;
+  imageUrls?: string[];
+  artistId: string;
+  activityTypeId: string;
+  lookupClient: SupabaseClient;
 }): Promise<{ ok: true; result: AiEvaluationResult } | { ok: false; error: string }> {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return { ok: false, error: "GEMINI_API_KEY 가 설정되지 않았습니다." };
     }
+    const { artistName, activityTypeName } = await fetchArtistAndActivityTypeNames(
+      params.lookupClient,
+      params.artistId,
+      params.activityTypeId
+    );
+    const imageUrls = params.imageUrls ?? [];
+    const inlineResult =
+      imageUrls.length > 0 ? await fetchImageUrlsAsGeminiInlineParts(imageUrls) : { ok: true as const, parts: [] };
+    if (!inlineResult.ok) {
+      return { ok: false, error: inlineResult.error };
+    }
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-    const prompt = JSON.stringify(
+    const contextualLead = `[제출된 아티스트: ${artistName}, 제출된 카테고리: ${activityTypeName}]\n\n[사용자 작성 본문]\n${params.content}`;
+    const metaJson = JSON.stringify(
       {
-        content: params.content,
         raw_content: params.rawContent,
+        image_count: imageUrls.length,
         instruction:
-          "위 데이터를 기준으로 점수와 pros/cons/reasoning을 JSON으로 반환하라.",
+          "위에 제시된 제출 메타데이터·본문과 함께 제공된 첨부 이미지(있는 경우)를 모두 반영하여, 시스템 지시의 심사 가이드·점수 구간·추천 바이브 규칙에 맞춰 JSON 스키마대로만 반환하라.",
       },
       null,
       2
     );
+    const prompt = `${contextualLead}\n\n${metaJson}`;
+    const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [
+      { text: prompt },
+      ...inlineResult.parts,
+    ];
     let response: Awaited<ReturnType<typeof model.generateContent>>;
     try {
       response = await model.generateContent({
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }],
+            parts,
           },
         ],
         generationConfig: {
@@ -242,7 +397,7 @@ async function evaluateWithGemini(params: {
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt }],
+            parts,
           },
         ],
         generationConfig: {
@@ -268,14 +423,7 @@ async function persistAiEvaluation(params: {
   supabase: ReturnType<typeof createSupabaseAnonClient>;
   logId: string;
   rawContent: string;
-  evaluation:
-    | AiEvaluationResult
-    | {
-        score: number;
-        pros: string[];
-        cons: string[];
-        reasoning: string;
-      };
+  evaluation: AiEvaluationResult;
 }) {
   const { supabase, logId, rawContent, evaluation } = params;
   const payload = {
@@ -298,6 +446,87 @@ async function persistAiEvaluation(params: {
       })
       .eq("id", logId);
   }
+}
+
+async function persistAiEvaluationAiOnly(params: {
+  supabase: SupabaseClient;
+  logId: string;
+  evaluation: AiEvaluationResult;
+}) {
+  const { supabase, logId, evaluation } = params;
+  const payload = {
+    ai_evaluation: evaluation,
+    ai_score: evaluation.score,
+  };
+
+  const { error } = await supabase.from("activity_logs").update(payload).eq("id", logId);
+  if (!error) return;
+
+  const lower = `${error.message} ${error.details ?? ""}`.toLowerCase();
+  const aiScoreMissing = lower.includes("ai_score") && (lower.includes("column") || lower.includes("does not exist"));
+  if (aiScoreMissing) {
+    await supabase.from("activity_logs").update({ ai_evaluation: evaluation }).eq("id", logId);
+  }
+}
+
+function scheduleActivityLogAiReview(params: {
+  logId: string;
+  content: string;
+  rawContent: string;
+  accessToken: string;
+  imageUrls: string[];
+  artistId: string;
+  activityTypeId: string;
+}) {
+  const { logId, content, rawContent, accessToken, imageUrls, artistId, activityTypeId } = params;
+  after(async () => {
+    try {
+      const lookupClient = createAiReviewLookupClient(accessToken);
+      if (!lookupClient) {
+        console.error("[background AI] 아티스트/카테고리 조회용 Supabase 클라이언트를 만들 수 없습니다.");
+        return;
+      }
+      const aiResult = await evaluateWithGemini({
+        content,
+        rawContent,
+        imageUrls,
+        artistId,
+        activityTypeId,
+        lookupClient,
+      });
+      if (!aiResult.ok) {
+        console.error("[background AI 심사 실패]", aiResult.error);
+        return;
+      }
+
+      if (hasSupabaseServiceRoleConfig()) {
+        await persistAiEvaluationAiOnly({
+          supabase: createSupabaseServiceRoleClient(),
+          logId,
+          evaluation: aiResult.result,
+        });
+        return;
+      }
+
+      const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!projectUrl || !anonKey) {
+        console.error("[background AI] Supabase 환경 변수가 없습니다.");
+        return;
+      }
+      const authed = createClient(projectUrl, anonKey, {
+        global: { headers: { Authorization: `Bearer ${accessToken}` } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      await persistAiEvaluationAiOnly({
+        supabase: authed,
+        logId,
+        evaluation: aiResult.result,
+      });
+    } catch (error) {
+      console.error("[background AI 심사]", error);
+    }
+  });
 }
 
 function mapInsertError(message: string): string {
@@ -491,11 +720,18 @@ export async function POST(request: Request) {
           if (!revived.ok) {
             return NextResponse.json({ ok: false, error: revived.error }, { status: revived.status });
           }
-          return NextResponse.json({
-            ok: true,
-            id: revived.id,
-            message: "반려된 활동을 수정하여 다시 심사 대기 상태로 등록했습니다.",
-          });
+          if (revived.id) {
+            scheduleActivityLogAiReview({
+              logId: revived.id,
+              content,
+              rawContent,
+              accessToken,
+              imageUrls: safeImageUrls,
+              artistId,
+              activityTypeId,
+            });
+          }
+          return NextResponse.json({ success: true });
         }
         return NextResponse.json(
           { ok: false, error: "이미 등록된 글입니다." },
@@ -514,7 +750,6 @@ export async function POST(request: Request) {
         raw_content: rawContent,
         proof_url: proofUrl,
         image_urls: safeImageUrls.length > 0 ? safeImageUrls : null,
-        status: "pending",
       })
       .select("id")
       .single();
@@ -556,35 +791,24 @@ export async function POST(request: Request) {
     }
 
     const savedId = inserted?.id ?? null;
-    if (savedId) {
-      const aiResult = await evaluateWithGemini({ content, rawContent });
-      if (aiResult.ok) {
-        await persistAiEvaluation({
-          supabase,
-          logId: savedId,
-          rawContent,
-          evaluation: aiResult.result,
-        });
-      } else {
-        await persistAiEvaluation({
-          supabase,
-          logId: savedId,
-          rawContent,
-          evaluation: {
-            score: 0,
-            pros: [],
-            cons: ["AI 심사 실패"],
-            reasoning: aiResult.error,
-          },
-        });
-      }
+    if (!savedId) {
+      return NextResponse.json(
+        { ok: false, error: "저장 후 식별자를 확인할 수 없습니다." },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({
-      ok: true,
-      id: savedId,
-      message: "활동 인증이 등록되었습니다.",
+    scheduleActivityLogAiReview({
+      logId: savedId,
+      content,
+      rawContent,
+      accessToken,
+      imageUrls: safeImageUrls,
+      artistId,
+      activityTypeId,
     });
+
+    return NextResponse.json({ success: true });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "등록 중 알 수 없는 오류가 발생했습니다.";
@@ -702,7 +926,7 @@ export async function PATCH(request: Request) {
 
     const { data: existing, error: existingError } = await supabase
       .from("activity_logs")
-      .select("id, user_id, proof_url")
+      .select("id, user_id, proof_url, artist_id, activity_type_id")
       .eq("id", logId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -748,7 +972,29 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const aiResult = await evaluateWithGemini({ content, rawContent });
+    const patchLookupClient = createAiReviewLookupClient(accessToken);
+    if (!patchLookupClient) {
+      return NextResponse.json(
+        { ok: false, error: "AI 심사용 환경 설정이 올바르지 않습니다." },
+        { status: 503 }
+      );
+    }
+    const artistIdPatch = typeof existing.artist_id === "string" ? existing.artist_id : "";
+    const activityTypeIdPatch = typeof existing.activity_type_id === "string" ? existing.activity_type_id : "";
+    if (!artistIdPatch || !activityTypeIdPatch) {
+      return NextResponse.json(
+        { ok: false, error: "활동에 연결된 아티스트 또는 카테고리 정보를 찾을 수 없습니다." },
+        { status: 400 }
+      );
+    }
+    const aiResult = await evaluateWithGemini({
+      content,
+      rawContent,
+      imageUrls,
+      artistId: artistIdPatch,
+      activityTypeId: activityTypeIdPatch,
+      lookupClient: patchLookupClient,
+    });
     if (aiResult.ok) {
       await persistAiEvaluation({
         supabase,
@@ -763,6 +1009,8 @@ export async function PATCH(request: Request) {
         rawContent,
         evaluation: {
           score: 0,
+          recommendation: "REJECT",
+          suggested_vibe: 0,
           pros: [],
           cons: ["AI 심사 실패"],
           reasoning: aiResult.error,
