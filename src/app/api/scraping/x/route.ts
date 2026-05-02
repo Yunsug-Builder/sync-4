@@ -294,13 +294,11 @@ export async function POST(request: Request) {
 
     const supabaseAdmin = createSupabaseAdminClient();
     const normalizedUrl = tweetUrl;
-    console.log("조회 전 normalizedUrl:", normalizedUrl);
     const { data: existingPost, error: duplicateError } = await supabaseAdmin
       .from("activity_logs")
       .select("*")
       .eq("proof_url", normalizedUrl)
       .maybeSingle();
-    console.log("조회된 데이터:", existingPost);
 
     if (duplicateError) {
       return NextResponse.json(
@@ -324,14 +322,6 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       );
-    } else {
-      // normalizedUrl과 DB 저장값의 불일치 여부를 빠르게 확인하기 위한 추가 로그
-      const { data: sameTweetIdRows } = await supabaseAdmin
-        .from("activity_logs")
-        .select("id, status, proof_url")
-        .ilike("proof_url", `%/status/${tweetId}%`)
-        .limit(10);
-      console.log("동일 tweetId 후보 rows:", sameTweetIdRows);
     }
 
     const { response, payload } = await fetchTweetFromSocialData(tweetId, apiKey);

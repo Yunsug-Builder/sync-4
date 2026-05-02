@@ -182,11 +182,6 @@ export default function ActivityDetailPage() {
       setViewerUserId(userId);
       const viewerKey = userId ?? "anon";
       if (shouldSkipActivityViewBump(logId, viewerKey)) {
-        console.log("[increment_view_count_v4] skip: client 30m cooldown", {
-          p_log_id: logId,
-          p_user_id: userId,
-          viewerKey,
-        });
         return;
       }
 
@@ -194,20 +189,13 @@ export default function ActivityDetailPage() {
         p_log_id: logId,
         p_user_id: userId,
       };
-      console.log("[increment_view_count_v4] p_user_id", rpcPayload.p_user_id);
-      console.log("[increment_view_count_v4] before rpc", rpcPayload);
       const { error: rpcErr } = await supabase.rpc("increment_view_count_v4", rpcPayload);
       if (cancelled) return;
       if (rpcErr) {
-        console.log("[increment_view_count_v4] rpc error", {
-          ...rpcPayload,
-          error: rpcErr.message,
-        });
         return;
       }
 
       markActivityViewBumped(logId, viewerKey);
-      console.log("[increment_view_count_v4] after rpc", rpcPayload);
       const { data: vcRow } = await supabase
         .from("activity_logs")
         .select("view_count")

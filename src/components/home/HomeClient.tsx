@@ -352,18 +352,16 @@ export default function HomeClient() {
           </div>
         ) : (
           <ul className="space-y-5">
-            {displayedEntries.map((entry) => {
-              return (
-                <FeedCard
-                  key={entry.id}
-                  entry={entry}
-                  preferredLanguage={preferredLanguage}
-                  isMine={session?.user?.id != null && entry.user_id === session.user.id}
-                  onDelete={handleDeleteEntry}
-                  deleting={deletingEntryId === entry.id}
-                />
-              );
-            })}
+            {displayedEntries.map((entry) => (
+              <FeedCard
+                key={entry.id}
+                entry={entry}
+                preferredLanguage={preferredLanguage}
+                isMine={session?.user?.id != null && entry.user_id === session.user.id}
+                onDelete={handleDeleteEntry}
+                deleting={deletingEntryId === entry.id}
+              />
+            ))}
           </ul>
         )}
       </main>

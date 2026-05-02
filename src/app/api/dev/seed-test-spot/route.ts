@@ -17,8 +17,6 @@ export async function POST() {
 
   const supabase = createSupabaseAnonClient();
 
-  console.log("[seed-test-spot] inserting test row…");
-
   const result = await insertTestSpotRow(supabase);
 
   if (result.error) {
@@ -28,8 +26,6 @@ export async function POST() {
       { status: 400 }
     );
   }
-
-  console.log("[seed-test-spot] insert OK:", JSON.stringify(result.data, null, 2));
 
   return NextResponse.json({ ok: true, inserted: true, ...result });
 }

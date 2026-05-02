@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Globe, Heart, Image as ImageIcon, MessageCircle, Music2 } from "lucide-react";
 
 export type ProofSourceMeta = {
@@ -120,7 +120,7 @@ function getTranslationByLanguage(
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function FeedCard({
+function FeedCardInner({
   entry,
   preferredLanguage = "EN",
   isMine = false,
@@ -261,3 +261,6 @@ export function FeedCard({
     </li>
   );
 }
+
+export const FeedCard = memo(FeedCardInner);
+FeedCard.displayName = "FeedCard";

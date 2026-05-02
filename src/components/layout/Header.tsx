@@ -47,7 +47,6 @@ export function Header() {
             <button
               type="button"
               onClick={() => {
-                console.log("Language Clicked:", "toggle");
                 setOpen((v) => !v);
               }}
               className="pointer-events-auto z-[9999] inline-flex min-h-11 items-center rounded-lg border border-zinc-800 bg-zinc-900 px-3 text-xs font-semibold text-zinc-200"
@@ -66,7 +65,6 @@ export function Header() {
                     key={option.code}
                     type="button"
                     onClick={() => {
-                      console.log("Language Clicked:", option.code);
                       void setLanguage(option.code);
                       setOpen(false);
                     }}
