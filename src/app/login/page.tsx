@@ -46,6 +46,7 @@ function LoginForm() {
     if (!q) {
       return;
     }
+
     try {
       setError(decodeURIComponent(q.replace(/\+/g, " ")));
     } catch {
@@ -79,20 +80,22 @@ function LoginForm() {
     setMessage(null);
     setError(null);
 
-    const trimmed = email.trim();
-    if (!trimmed) {
-      setError("이메일 주소를 입력해 주세요.");
-      setLoading(false);
-      return;
-    }
-    if (!EMAIL_REGEX.test(trimmed)) {
-      setError("올바른 이메일 형식이 아닙니다. 예: name@example.com");
-      setLoading(false);
-      return;
-    }
-
     try {
       const supabase = getSupabaseBrowserClient();
+      const trimmed = email.trim();
+
+      if (!trimmed) {
+        setError("이메일 주소를 입력해 주세요.");
+        setLoading(false);
+        return;
+      }
+
+      if (!EMAIL_REGEX.test(trimmed)) {
+        setError("올바른 이메일 형식이 아닙니다. 예: name@example.com");
+        setLoading(false);
+        return;
+      }
+
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: {
@@ -119,36 +122,39 @@ function LoginForm() {
     <main className="min-h-screen bg-black text-white">
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-16">
         <p className="text-xs tracking-[0.2em] text-zinc-500">SYNC</p>
-        <h1 className="mt-4 text-4xl font-semibold tracking-tight">매직링크로 로그인</h1>
-        <p className="mt-3 text-sm text-zinc-400">이메일만 입력하면 로그인 링크를 보내 드립니다.</p>
+        <h1 className="mt-4 text-4xl font-semibold tracking-tight">로그인</h1>
+        <p className="mt-3 text-sm text-zinc-400">
+          이메일 주소를 입력하면 로그인용 매직 링크를 보내드립니다.
+        </p>
 
         <form onSubmit={handleMagicLink} className="mt-10 space-y-4">
-          <label className="block">
-            <span className="sr-only">이메일</span>
-            <input
-              type="email"
-              autoComplete="email"
-              inputMode="email"
-              placeholder="name@example.com"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="h-12 w-full rounded-2xl border border-white/15 bg-zinc-950 px-4 text-sm outline-none transition placeholder:text-zinc-500 focus:border-white/35"
-            />
+          <label htmlFor="email" className="sr-only">
+            이메일
           </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+            disabled={loading}
+            className="h-12 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
+          />
 
           <button
             type="submit"
-            disabled={loading || !email.trim()}
+            disabled={loading}
             className="h-12 w-full rounded-2xl bg-white text-sm font-medium text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {loading ? "전송 중…" : "매직링크 받기"}
+            {loading ? "전송 중…" : "매직 링크 받기"}
           </button>
         </form>
 
         {message ? (
           <p className="mt-5 text-sm leading-relaxed text-emerald-300">{message}</p>
         ) : null}
+
         {error ? (
           <p className="mt-3 text-sm leading-relaxed text-red-300" role="alert">
             {error}
