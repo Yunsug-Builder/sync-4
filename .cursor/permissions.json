@@ -1,0 +1,44 @@
+{
+  // SYNC repository — Cursor Auto-review 보조 통제 (보안 경계 아님).
+  // Run Mode: Auto-review 활성화 필요. 롤백: 이 파일 삭제 또는 git revert.
+  "terminalAllowlist": [
+    "ls",
+    "pwd",
+    "cat",
+    "rg",
+    "grep",
+    "find",
+
+    "git status",
+    "git log",
+    "git diff --name-only",
+
+    "pnpm lint",
+    "pnpm typecheck",
+    "pnpm test",
+    "npm run lint",
+    "npm run typecheck",
+    "npm test",
+
+    "supabase --version",
+    "supabase status"
+  ],
+  "autoRun": {
+    "allow_instructions": [
+      "Read-only codebase exploration: listing directories, searching source with rg/grep/find, and reading non-secret project files.",
+      "Read-only Git inspection: git status, git log, git diff --name-only (no push, no force, no destructive git).",
+      "Local quality gates: pnpm/npm lint, typecheck, and test scripts only.",
+      "Supabase CLI local read-only checks: supabase --version and supabase status (no db/link/migration subcommands)."
+    ],
+    "block_instructions": [
+      "Always require approval before git push, git push --force, or any remote-changing git operation.",
+      "Always require approval before deploy, release, or production-targeting commands.",
+      "Always require approval before rm -rf or other recursive destructive deletes.",
+      "Always require approval before curl/wget piped to shell (e.g. curl | sh, curl | bash).",
+      "Always require approval before reading, printing, or exfiltrating secrets: .env, .env.local, .env.*, credentials, service_role keys, API tokens, or private keys.",
+      "Always require approval before any remote or production database work: SQL execution, psql against remote hosts, Supabase db push/pull/reset/link, migration apply, or schema/RLS changes.",
+      "Always require approval before creating or modifying files under supabase/migrations/, RLS policies, or production schema definitions.",
+      "Always require approval before Supabase commands beyond --version and status (e.g. db, migration, link, projects, secrets)."
+    ]
+  }
+}

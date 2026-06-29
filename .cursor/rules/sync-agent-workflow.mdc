@@ -1,0 +1,79 @@
+---
+description: SYNC repository agent workflow — local verification and high-risk approval gates
+alwaysApply: true
+---
+
+# SYNC Agent Workflow
+
+## Local verification after code changes
+
+When code is changed and verification is relevant, run only these allowed local checks:
+
+- `pnpm typecheck`, `pnpm lint`, `pnpm test`
+- `npm run typecheck`, `npm run lint`, `npm test`
+
+If verification fails, analyze the cause, fix the issue, and re-run the relevant check before finishing.
+
+## Explicit approval required first
+
+Do **not** run or proceed without explicit user approval for:
+
+- Supabase remote operations, migrations, RLS, or schema changes
+- Production database access or data changes
+- Reading or using `.env`, secrets, credentials, or service keys
+- Deploy, release, or production-targeting commands
+- `git push`, `git push --force`, or other remote-changing git operations
+
+Ask the user clearly before attempting any of the above.
+
+## Auxiliary controls (not security boundaries)
+
+`.cursor/permissions.json` and Auto-review reduce approval fatigue only. They are **not** security guarantees. High-risk actions still require explicit user approval and must not be assumed safe because they are allowlisted or auto-approved.
+
+## Change scope
+
+- Make the smallest safe change that satisfies the user request.
+- Do not refactor unrelated code unless explicitly requested.
+- Do not rename files, move files, change folder structure, or rewrite large components unless necessary and approved.
+- Preserve existing behavior unless the user explicitly asks to change it.
+
+## Dependency and configuration changes
+
+- Do not install, remove, or upgrade packages without explicit user approval.
+- Do not modify `package.json`, lockfiles, `next.config`, Tailwind config, `tsconfig`, middleware, auth config, or environment-related configuration without explaining the reason first.
+- If a dependency or configuration change seems necessary, stop and ask for approval with the expected impact and rollback plan.
+
+## Security-sensitive areas
+
+Treat the following areas as security-sensitive:
+
+- Authentication and session handling
+- Supabase client/server helpers
+- Admin checks
+- VIBE, rewards, settlement, views, syncs, and activity logging
+- API routes, server actions, RPC calls, and database access code
+
+When modifying these areas:
+
+- Explain the risk before changing code
+- Keep the diff minimal
+- Run relevant local validation
+- Do not change DB schema, RLS, migration, or production data without explicit approval
+
+## Completion report
+
+After completing a task, report only:
+
+- Files changed
+- What changed
+- Validation commands run and their results
+- Any skipped validation and the reason
+- Remaining risks or follow-up items
+
+Do not paste long diffs into chat. The user will review diffs in Cursor IDE.
+
+## Failure handling
+
+- If the same validation fails twice for the same reason, stop and summarize the blocker instead of making broad speculative changes.
+- Do not hide, bypass, or weaken tests, lint rules, type checks, auth checks, or security checks just to make validation pass.
+- Never replace a failing check with a weaker check unless explicitly approved.

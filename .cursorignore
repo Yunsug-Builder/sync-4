@@ -1,0 +1,8 @@
+﻿# Secret, credential, and key files — reduce Cursor Agent access (not a security boundary).
+**/.env
+**/.env.*
+**/credentials.json
+**/secrets.json
+**/*.key
+**/*.pem
+**/id_rsa
