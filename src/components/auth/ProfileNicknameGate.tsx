@@ -75,16 +75,30 @@ export function ProfileNicknameGate({ children }: { children: React.ReactNode })
       return;
     }
 
-    const { error: upsertError } = await supabase.from("profiles").upsert(
-      {
-        id: user.id,
-        nickname: trimmed,
-      },
-      { onConflict: "id" }
-    );
+    const { data: existingProfile, error: existingProfileError } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
 
-    if (upsertError) {
-      setError(upsertError.message);
+    if (existingProfileError) {
+      setError(existingProfileError.message);
+      setSaving(false);
+      return;
+    }
+
+    const saveResult = existingProfile
+      ? await supabase
+          .from("profiles")
+          .update({ nickname: trimmed })
+          .eq("id", user.id)
+      : await supabase.from("profiles").insert({
+          id: user.id,
+          nickname: trimmed,
+        });
+
+    if (saveResult.error) {
+      setError(saveResult.error.message);
       setSaving(false);
       return;
     }

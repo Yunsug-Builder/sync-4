@@ -6,7 +6,17 @@ export type UserActivityStats = {
   viewSum: number;
 };
 
-const SYNC_IN_CHUNK = 300;
+const SYNC_COUNT_RPC_CHUNK = 300;
+
+type ActivitySyncCountRow = {
+  activity_id: string;
+  sync_count: number | string | null;
+};
+
+function toNonNegativeInteger(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
 
 /**
  * 승인된 활동 기준: 게시글 수, 받은 Sync 총수, 조회수 합.
@@ -52,22 +62,21 @@ export async function fetchUserActivityStatsMap(
     logToUser.set(lid, uid);
   }
 
-  for (let i = 0; i < logIds.length; i += SYNC_IN_CHUNK) {
-    const chunk = logIds.slice(i, i + SYNC_IN_CHUNK);
-    const { data: syncs, error: syncErr } = await supabase
-      .from("activity_syncs")
-      .select("activity_id")
-      .in("activity_id", chunk);
+  for (let i = 0; i < logIds.length; i += SYNC_COUNT_RPC_CHUNK) {
+    const chunk = logIds.slice(i, i + SYNC_COUNT_RPC_CHUNK);
+    const { data: syncCounts, error: syncErr } = await supabase.rpc(
+      "get_activity_sync_counts",
+      { p_activity_ids: chunk }
+    );
 
     if (syncErr) {
       break;
     }
-    for (const s of syncs ?? []) {
-      const row = s as { activity_id: string };
+    for (const row of (syncCounts ?? []) as ActivitySyncCountRow[]) {
       const uid = logToUser.get(String(row.activity_id));
       if (!uid) continue;
       const st = map.get(uid);
-      if (st) st.syncCount += 1;
+      if (st) st.syncCount += toNonNegativeInteger(row.sync_count);
     }
   }
 

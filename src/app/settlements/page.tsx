@@ -28,6 +28,16 @@ function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
+type ActivitySyncCountRow = {
+  activity_id: string;
+  sync_count: number | string | null;
+};
+
+function toNonNegativeInteger(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
 export default function SettlementsPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [rows, setRows] = useState<SettlementHistoryRow[]>([]);
@@ -60,7 +70,7 @@ export default function SettlementsPage() {
           id,
           content,
           proof_url,
-          view_count,
+          qualified_view_count,
           created_at,
           activity_types ( name )
         `
@@ -77,14 +87,15 @@ export default function SettlementsPage() {
       }
 
       const ids = logs.map((v) => String((v as { id: string }).id));
-      const { data: syncRows } = await supabase
-        .from("activity_syncs")
-        .select("activity_id")
-        .in("activity_id", ids);
       const syncCountByActivityId = new Map<string, number>();
-      for (const row of syncRows ?? []) {
-        const aid = String((row as { activity_id: string }).activity_id);
-        syncCountByActivityId.set(aid, (syncCountByActivityId.get(aid) ?? 0) + 1);
+      const { data: syncRows } = await supabase.rpc("get_activity_sync_counts", {
+        p_activity_ids: ids,
+      });
+      for (const row of (syncRows ?? []) as ActivitySyncCountRow[]) {
+        syncCountByActivityId.set(
+          String(row.activity_id),
+          toNonNegativeInteger(row.sync_count)
+        );
       }
 
       const out: PostBreakdown[] = [];
@@ -93,7 +104,7 @@ export default function SettlementsPage() {
           id: string;
           content: string | null;
           proof_url?: string | null;
-          view_count?: number | null;
+          qualified_view_count?: number | null;
           created_at: string;
           activity_types: unknown;
         };
@@ -106,7 +117,7 @@ export default function SettlementsPage() {
               id: log.id,
               content: log.content,
               proof_url: log.proof_url,
-              view_count: log.view_count,
+              qualified_view_count: log.qualified_view_count,
               created_at: log.created_at,
               activity_types: at,
             },

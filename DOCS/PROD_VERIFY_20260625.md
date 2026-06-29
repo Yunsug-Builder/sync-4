@@ -380,3 +380,109 @@ Static verification is sufficient to confirm the vulnerability because:
 ### Next
 - Proceed to H-01 view count abuse verification.
 - Include H-05 together with H-03/H-04 in the upcoming P0 batch security migration.
+
+---
+
+## 2026-06-29 Apply & Regression Verification
+
+### Status
+Passed
+
+### Scope
+- Phase 1 P0 security hardening SQL apply verification.
+- Post-apply database security verification.
+- Local regression verification for core user, reward, settlement, X handle, and admin approval flows.
+- Documentation-only record; this section does not apply schema changes.
+
+### Apply Result
+- Supabase SQL Editor executed the full `tmp/020_p0_security_hardening_phase1_apply.sql` script.
+- Result: `Success. No rows returned`.
+
+### RLS Verification
+Passed:
+- `profiles`: true
+- `activity_logs`: true
+- `activity_syncs`: true
+- `activity_view_logs`: true
+- `settlement_history`: true
+
+### Table Grants Verification
+Passed:
+- `anon` and `authenticated` direct access to `activity_syncs` is blocked.
+- `anon` and `authenticated` direct access to `activity_view_logs` is blocked.
+- `anon` and `authenticated` writes to `activity_logs` are blocked.
+- `authenticated` access to `settlement_history` is SELECT-only.
+- `service_role` server privileges are preserved.
+
+### Function Grants Verification
+Passed:
+- `admin_approve_activity_log` and `admin_approve_activity_log_v2`: `service_role` only.
+- `perform_weekly_settlement`: `service_role` only.
+- `increment_view_count_v2` and `increment_view_count_v3`: `anon` and `authenticated` blocked.
+- `increment_view_count_v4` and `increment_view_count_v5`: `anon` and `authenticated` allowed.
+- `set_activity_sync`: `authenticated` only.
+- `get_activity_sync_state` and `get_activity_sync_counts`: `anon` and `authenticated` allowed.
+
+### Profiles Column Grants Verification
+Passed:
+- `authenticated` INSERT allowed only for:
+  - `id`
+  - `nickname`
+  - `avatar_url`
+  - `preferred_language`
+  - `x_handle`
+- `authenticated` UPDATE allowed only for:
+  - `nickname`
+  - `avatar_url`
+  - `preferred_language`
+  - `x_handle`
+- Writes are not allowed for:
+  - `total_vibes`
+  - `is_admin`
+  - `verification_code`
+  - `is_x_verified`
+
+### RLS Policy Verification
+Passed:
+- `activity_logs` approved public SELECT.
+- `activity_logs` own SELECT.
+- `profiles` public SELECT.
+- `profiles` own SELECT.
+- `profiles` own INSERT.
+- `profiles` own UPDATE.
+- `settlement_history` own SELECT.
+- `activity_syncs` and `activity_view_logs` have no direct client policies.
+
+### Local Regression Verification
+Passed:
+- Login and session persistence.
+- Activity creation.
+- Activity edit.
+- Activity delete.
+- Activity detail page access.
+- View count increment.
+- Sync on/off.
+- Home feed sync count display.
+- Profile estimated reward display.
+- Settlement page access.
+- X handle save and verification flow.
+- Admin approved-log list.
+- Admin approve.
+- Admin reject.
+- Positive VIBE approval test: `{"ok":true,"vibes_added":10}`.
+
+### Regression Found And Resolved
+- Issue: admin approve/reject requests returned Next.js default 404 HTML.
+- Cause: in Next.js 16 dev route manifest generation, `activity-logs/[id]/route.ts` prevented nested `approve` and `reject` route handlers from being registered.
+- Fix: moved the detail GET route under a route group, preserving the public URL while allowing `approve` and `reject` route handlers to register.
+- Additional UI fix: admin approve/reject handlers now tolerate HTML/non-JSON failure responses and always restore loading/submitting state in `finally`.
+
+### Deferred Items
+- Google Fonts download warning: P1 stabilization backlog.
+- Delete confirmation UI improvement: P1/design backlog.
+- X integration retention decision: Phase 2 product strategy.
+- Reduce `profiles` public SELECT exposure: Phase 1.5 read minimization.
+- Temporary admin-account speed issue: deferred.
+
+### Result
+P0 security hardening apply, post-apply DB verification, and local regression verification are complete and passed as of 2026-06-29.

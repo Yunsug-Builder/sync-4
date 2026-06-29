@@ -24,14 +24,27 @@ type ApproveRequestBody = {
 
 const MAX_REWARD_VIBES = 1_000_000;
 
-function normalizeRewardedVibe(body: ApproveRequestBody): number {
+type RewardValidation =
+  | { ok: true; value: number }
+  | { ok: false; error: string };
+
+function validateRewardedVibe(body: ApproveRequestBody): RewardValidation {
   const raw =
     typeof body.rewarded_vibe === "number" && Number.isFinite(body.rewarded_vibe)
       ? body.rewarded_vibe
       : typeof body.final_vibes === "number" && Number.isFinite(body.final_vibes)
         ? body.final_vibes
-        : 0;
-  return Math.max(0, Math.min(MAX_REWARD_VIBES, Math.floor(raw)));
+        : null;
+  if (raw == null) {
+    return { ok: false, error: "invalid_reward" };
+  }
+  if (raw < 0) {
+    return { ok: false, error: "invalid_reward" };
+  }
+  if (raw > MAX_REWARD_VIBES) {
+    return { ok: false, error: "reward_too_large" };
+  }
+  return { ok: true, value: Math.floor(raw) };
 }
 
 /**
@@ -110,7 +123,14 @@ export async function POST(request: Request, context: Ctx) {
       );
     }
 
-    const rewardedVibe = normalizeRewardedVibe(requestBody);
+    const rewardValidation = validateRewardedVibe(requestBody);
+    if (!rewardValidation.ok) {
+      return NextResponse.json(
+        { ok: false, error: rewardValidation.error },
+        { status: 400 }
+      );
+    }
+    const rewardedVibe = rewardValidation.value;
     const aiEvaluation =
       requestBody.ai_evaluation != null &&
       typeof requestBody.ai_evaluation === "object"

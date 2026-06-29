@@ -15,6 +15,27 @@ type Props = {
   onCountsUpdated?: () => void;
 };
 
+type ActivitySyncStateRow = {
+  sync_count: number | string | null;
+  is_synced: boolean | null;
+};
+
+function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+function normalizeSyncState(row: ActivitySyncStateRow | null): {
+  count: number;
+  synced: boolean;
+} {
+  const countRaw = Number(row?.sync_count ?? 0);
+  return {
+    count: Number.isFinite(countRaw) ? Math.max(0, Math.floor(countRaw)) : 0,
+    synced: Boolean(row?.is_synced),
+  };
+}
+
 export function ActivitySyncControl({
   activityLogId,
   isApproved,
@@ -43,25 +64,17 @@ export function ActivitySyncControl({
     setViewerId(uid);
     setHasSession(Boolean(uid));
 
-    const { count: c, error: countErr } = await supabase
-      .from("activity_syncs")
-      .select("*", { count: "exact", head: true })
-      .eq("activity_id", activityLogId);
+    const { data: syncState, error: syncStateError } = await supabase.rpc(
+      "get_activity_sync_state",
+      { p_activity_id: activityLogId }
+    );
 
-    if (!countErr) {
-      setCount(c ?? 0);
-    }
-
-    if (uid) {
-      const { data: row } = await supabase
-        .from("activity_syncs")
-        .select("id")
-        .eq("activity_id", activityLogId)
-        .eq("user_id", uid)
-        .maybeSingle();
-      setSynced(Boolean(row));
-    } else {
-      setSynced(false);
+    if (!syncStateError) {
+      const state = normalizeSyncState(
+        firstOrNull(syncState as ActivitySyncStateRow[] | ActivitySyncStateRow | null)
+      );
+      setCount(state.count);
+      setSynced(uid ? state.synced : false);
     }
 
     setLoading(false);
@@ -105,25 +118,18 @@ export function ActivitySyncControl({
 
     setPending(true);
     try {
-      if (synced) {
-        const { error } = await supabase
-          .from("activity_syncs")
-          .delete()
-          .eq("activity_id", activityLogId)
-          .eq("user_id", user.id);
-        if (!error) {
-          await loadSyncState();
-          onCountsUpdated?.();
-        }
-      } else {
-        const { error } = await supabase.from("activity_syncs").insert({
-          activity_id: activityLogId,
-          user_id: user.id,
-        });
-        if (!error) {
-          await loadSyncState();
-          onCountsUpdated?.();
-        }
+      const { data: syncState, error } = await supabase.rpc("set_activity_sync", {
+        p_activity_id: activityLogId,
+        p_synced: !synced,
+      });
+
+      if (!error) {
+        const state = normalizeSyncState(
+          firstOrNull(syncState as ActivitySyncStateRow[] | ActivitySyncStateRow | null)
+        );
+        setCount(state.count);
+        setSynced(state.synced);
+        onCountsUpdated?.();
       }
     } finally {
       setPending(false);
@@ -135,7 +141,6 @@ export function ActivitySyncControl({
     synced,
     router,
     loginHref,
-    loadSyncState,
     onCountsUpdated,
   ]);
 

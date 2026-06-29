@@ -4,7 +4,7 @@ import { estimatedBonusVibes } from "@/lib/rewards";
 
 type Props = {
   baseVibes: number;
-  viewCount: number;
+  qualifiedViewCount: number;
   syncCount: number;
   isSettled: boolean;
   isApproved: boolean;
@@ -12,7 +12,7 @@ type Props = {
 
 export function ActivityRewardSection({
   baseVibes,
-  viewCount,
+  qualifiedViewCount,
   syncCount,
   isSettled,
   isApproved,
@@ -21,7 +21,7 @@ export function ActivityRewardSection({
     return null;
   }
 
-  const bonusPreview = estimatedBonusVibes(syncCount, viewCount);
+  const bonusPreview = estimatedBonusVibes(syncCount, qualifiedViewCount);
 
   return (
     <section className="mt-10 border-t border-white/10 pt-8">
@@ -56,7 +56,7 @@ export function ActivityRewardSection({
               </p>
               <p className="mt-2 text-xs leading-relaxed text-zinc-500">
                 (현재 Sync {syncCount.toLocaleString("ko-KR")} × 5) + (조회{" "}
-                {viewCount.toLocaleString("ko-KR")} ÷ 10) = 실시간 추정치 · 매주 월요일
+                {qualifiedViewCount.toLocaleString("ko-KR")} ÷ 10) = 실시간 추정치 · 매주 월요일
                 정산 시 확정됩니다.
               </p>
             </>

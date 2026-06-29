@@ -26,15 +26,15 @@ export function buildPostBreakdown(
     id: string;
     content: string | null;
     proof_url?: string | null;
-    view_count?: number | null;
+    qualified_view_count?: number | null;
     created_at: string;
     activity_types: { name: string | null } | null;
   },
   syncCount: number
 ): PostBreakdown {
   const views =
-    typeof log.view_count === "number" && !Number.isNaN(log.view_count)
-      ? Math.max(0, Math.floor(log.view_count))
+    typeof log.qualified_view_count === "number" && !Number.isNaN(log.qualified_view_count)
+      ? Math.max(0, Math.floor(log.qualified_view_count))
       : 0;
   const sync = Math.max(0, Math.floor(syncCount));
   const syncVibes = sync * 5;

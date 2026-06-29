@@ -28,6 +28,37 @@ type UpdateBody = {
   image_urls?: unknown;
 };
 
+const FORBIDDEN_ACTIVITY_LOG_BODY_FIELDS = new Set([
+  "user_id",
+  "status",
+  "view_count",
+  "qualified_view_count",
+  "sync_count",
+  "base_vibes",
+  "bonus_vibes",
+  "total_reward_vibes",
+  "is_settled",
+  "ai_evaluation",
+  "ai_score",
+  "translations",
+  "approved_at",
+  "approved_by",
+  "rejected_at",
+  "rejected_by",
+  "rejection_reason",
+  "deleted_at",
+  "deleted_by",
+]);
+
+function findForbiddenActivityLogBodyField(body: object): string | null {
+  for (const key of Object.keys(body)) {
+    if (FORBIDDEN_ACTIVITY_LOG_BODY_FIELDS.has(key)) {
+      return key;
+    }
+  }
+  return null;
+}
+
 function extractAccessToken(request: Request): string | null {
   const authHeader = request.headers.get("authorization");
   if (!authHeader) return null;
@@ -41,8 +72,7 @@ function isAllowedActivityImageUrl(url: string, projectUrl: string): boolean {
 }
 
 function normalizeImageUrls(
-  raw: unknown,
-  projectUrl: string | undefined
+  raw: unknown
 ): { ok: true; urls: string[] } | { ok: false; error: string } {
   if (raw === undefined || raw === null) return { ok: true, urls: [] };
   if (!Array.isArray(raw)) {
@@ -195,7 +225,7 @@ function createAiReviewLookupClient(accessToken: string): SupabaseClient | null 
 }
 
 async function persistAiEvaluation(params: {
-  supabase: ReturnType<typeof createSupabaseAnonClient>;
+  supabase: SupabaseClient;
   logId: string;
   rawContent: string;
   evaluation: AiEvaluationResult;
@@ -329,7 +359,7 @@ function mapInsertError(message: string): string {
 }
 
 async function reviveRejectedProofLog(params: {
-  supabase: ReturnType<typeof createSupabaseAnonClient>;
+  supabase: SupabaseClient;
   userId: string;
   targetId: string;
   proofUrl: string;
@@ -381,11 +411,18 @@ export async function POST(request: Request) {
       );
     }
 
-    let body: SubmitBody = {};
+    let body: SubmitBody & Record<string, unknown> = {};
     try {
-      body = (await request.json()) as SubmitBody;
+      body = (await request.json()) as SubmitBody & Record<string, unknown>;
     } catch {
       body = {};
+    }
+    const forbiddenField = findForbiddenActivityLogBodyField(body);
+    if (forbiddenField) {
+      return NextResponse.json(
+        { ok: false, error: `activity_logs.${forbiddenField} is server-managed.` },
+        { status: 400 }
+      );
     }
 
     const artistId = (body.artist_id ?? "").trim();
@@ -395,7 +432,7 @@ export async function POST(request: Request) {
     const rawProofUrl = body.proof_url;
     const proofUrl = normalizeProofUrl(rawProofUrl ?? null);
     const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const imageUrlsResult = normalizeImageUrls(body.image_urls, projectUrl);
+    const imageUrlsResult = normalizeImageUrls(body.image_urls);
     if (!imageUrlsResult.ok) {
       return NextResponse.json({ ok: false, error: imageUrlsResult.error }, { status: 400 });
     }
@@ -432,6 +469,14 @@ export async function POST(request: Request) {
         { status: 401 }
       );
     }
+    if (!hasSupabaseServiceRoleConfig()) {
+      return NextResponse.json(
+        { ok: false, error: "SUPABASE_SERVICE_ROLE_KEY is required for secure activity writes." },
+        { status: 503 }
+      );
+    }
+    const supabaseServiceRole = createSupabaseServiceRoleClient();
+
     const mirroredImageUrls = await mirrorExternalActivityImages({
       imageUrls,
       projectUrl,
@@ -444,13 +489,6 @@ export async function POST(request: Request) {
     const safeImageUrls = mirroredImageUrls.urls;
 
     if (proofUrl) {
-      if (!hasSupabaseServiceRoleConfig()) {
-        return NextResponse.json(
-          { ok: false, error: "서비스 롤 설정이 없어 중복 검사를 수행할 수 없습니다." },
-          { status: 503 }
-        );
-      }
-      const supabaseServiceRole = createSupabaseServiceRoleClient();
       const { data: existed, error: duplicateCheckError } = await supabaseServiceRole
         .from("activity_logs")
         .select("id, status, user_id")
@@ -488,7 +526,7 @@ export async function POST(request: Request) {
             );
           }
           const revived = await reviveRejectedProofLog({
-            supabase,
+            supabase: supabaseServiceRole,
             userId: user.id,
             targetId: existed.id,
             proofUrl,
@@ -519,7 +557,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: inserted, error: insertError } = await supabase
+    const { data: inserted, error: insertError } = await supabaseServiceRole
       .from("activity_logs")
       .insert({
         user_id: user.id,
@@ -539,10 +577,7 @@ export async function POST(request: Request) {
         const isProofUrlConflict =
           lowerDetails.includes("proof_url") || lowerDetails.includes("unique_proof_url");
         if (proofUrl && isProofUrlConflict) {
-          const lookupClient = hasSupabaseServiceRoleConfig()
-            ? createSupabaseServiceRoleClient()
-            : supabase;
-          const { data: duplicated, error: duplicateLookupError } = await lookupClient
+          const { data: duplicated, error: duplicateLookupError } = await supabaseServiceRole
             .from("activity_logs")
             .select("id, status")
             .eq("proof_url", proofUrl)
@@ -605,11 +640,18 @@ export async function DELETE(request: Request) {
       );
     }
 
-    let body: DeleteBody = {};
+    let body: DeleteBody & Record<string, unknown> = {};
     try {
-      body = (await request.json()) as DeleteBody;
+      body = (await request.json()) as DeleteBody & Record<string, unknown>;
     } catch {
       body = {};
+    }
+    const forbiddenField = findForbiddenActivityLogBodyField(body);
+    if (forbiddenField) {
+      return NextResponse.json(
+        { ok: false, error: `activity_logs.${forbiddenField} is server-managed.` },
+        { status: 400 }
+      );
     }
     const logId = (body.id ?? "").trim();
     if (!logId) {
@@ -628,7 +670,15 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const { data: updated, error: updateError } = await supabase
+    if (!hasSupabaseServiceRoleConfig()) {
+      return NextResponse.json(
+        { ok: false, error: "SUPABASE_SERVICE_ROLE_KEY is required for secure activity writes." },
+        { status: 503 }
+      );
+    }
+    const supabaseServiceRole = createSupabaseServiceRoleClient();
+
+    const { data: updated, error: updateError } = await supabaseServiceRole
       .from("activity_logs")
       .update({
         status: "deleted",
@@ -675,11 +725,18 @@ export async function PATCH(request: Request) {
       );
     }
 
-    let body: UpdateBody = {};
+    let body: UpdateBody & Record<string, unknown> = {};
     try {
-      body = (await request.json()) as UpdateBody;
+      body = (await request.json()) as UpdateBody & Record<string, unknown>;
     } catch {
       body = {};
+    }
+    const forbiddenField = findForbiddenActivityLogBodyField(body);
+    if (forbiddenField) {
+      return NextResponse.json(
+        { ok: false, error: `activity_logs.${forbiddenField} is server-managed.` },
+        { status: 400 }
+      );
     }
     const logId = (body.id ?? "").trim();
     const content = (body.content ?? "").trim();
@@ -703,7 +760,15 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { data: existing, error: existingError } = await supabase
+    if (!hasSupabaseServiceRoleConfig()) {
+      return NextResponse.json(
+        { ok: false, error: "SUPABASE_SERVICE_ROLE_KEY is required for secure activity writes." },
+        { status: 503 }
+      );
+    }
+    const supabaseServiceRole = createSupabaseServiceRoleClient();
+
+    const { data: existing, error: existingError } = await supabaseServiceRole
       .from("activity_logs")
       .select("id, user_id, proof_url, artist_id, activity_type_id")
       .eq("id", logId)
@@ -720,14 +785,13 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const imageUrlsResult = normalizeImageUrls(body.image_urls, projectUrl);
+    const imageUrlsResult = normalizeImageUrls(body.image_urls);
     if (!imageUrlsResult.ok) {
       return NextResponse.json({ ok: false, error: imageUrlsResult.error }, { status: 400 });
     }
     const imageUrls = imageUrlsResult.urls;
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabaseServiceRole
       .from("activity_logs")
       .update({
         content,
@@ -780,14 +844,14 @@ export async function PATCH(request: Request) {
     });
     if (aiResult.ok) {
       await persistAiEvaluation({
-        supabase,
+        supabase: supabaseServiceRole,
         logId: updated.id,
         rawContent,
         evaluation: aiResult.result,
       });
     } else {
       await persistAiEvaluation({
-        supabase,
+        supabase: supabaseServiceRole,
         logId: updated.id,
         rawContent,
         evaluation: {

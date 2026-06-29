@@ -47,6 +47,33 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+type AdminActionResponse = { ok?: boolean; error?: string };
+
+async function readAdminActionResponse(
+  res: Response,
+  fallbackError: string
+): Promise<AdminActionResponse> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      return (await res.json()) as AdminActionResponse;
+    } catch {
+      return { ok: false, error: "invalid_json_response" };
+    }
+  }
+
+  return {
+    ok: false,
+    error: res.status === 404 ? "api_route_not_found" : `${fallbackError}_${res.status}`,
+  };
+}
+
+function requestFailureMessage(error: unknown, fallbackError: string): string {
+  return error instanceof Error && error.message
+    ? `${fallbackError}: ${error.message}`
+    : fallbackError;
+}
+
 export default function AdminDashboardClient() {
   const [logs, setLogs] = useState<PendingLog[]>([]);
   const [approvedLogs, setApprovedLogs] = useState<ApprovedLog[]>([]);
@@ -86,34 +113,52 @@ export default function AdminDashboardClient() {
 
   const handleApprove = async (row: PendingLog) => {
     setActingId(row.id);
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(row.id)}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({
-        status: "approved",
-        rewarded_vibe: suggestedVibeFromAiEvaluation(row.ai_evaluation),
-        ai_evaluation: row.ai_evaluation,
-      }),
-    });
-    const body = (await res.json()) as { ok?: boolean; error?: string };
-    setActingId(null);
-    if (!res.ok || !body.ok) return setBanner(body.error ?? "승인 실패");
-    setLogs((prev) => prev.filter((v) => v.id !== row.id));
-    void loadApproved();
+    setBanner(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(row.id)}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          status: "approved",
+          rewarded_vibe: suggestedVibeFromAiEvaluation(row.ai_evaluation),
+          ai_evaluation: row.ai_evaluation,
+        }),
+      });
+      const body = await readAdminActionResponse(res, "approve_failed");
+      if (!res.ok || !body.ok) {
+        setBanner(body.error ?? "approve_failed");
+        return;
+      }
+      setLogs((prev) => prev.filter((v) => v.id !== row.id));
+      void loadApproved();
+    } catch (error) {
+      setBanner(requestFailureMessage(error, "approve_request_failed"));
+    } finally {
+      setActingId(null);
+    }
   };
 
   const handleReject = async (id: string) => {
     setActingId(id);
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(id)}/reject`, {
-      method: "POST",
-      headers,
-    });
-    const body = (await res.json()) as { ok?: boolean; error?: string };
-    setActingId(null);
-    if (!res.ok || !body.ok) return setBanner(body.error ?? "반려 실패");
-    setLogs((prev) => prev.filter((v) => v.id !== id));
+    setBanner(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(id)}/reject`, {
+        method: "POST",
+        headers,
+      });
+      const body = await readAdminActionResponse(res, "reject_failed");
+      if (!res.ok || !body.ok) {
+        setBanner(body.error ?? "reject_failed");
+        return;
+      }
+      setLogs((prev) => prev.filter((v) => v.id !== id));
+    } catch (error) {
+      setBanner(requestFailureMessage(error, "reject_request_failed"));
+    } finally {
+      setActingId(null);
+    }
   };
 
   const handleSettlement = async () => {
@@ -166,4 +211,3 @@ export default function AdminDashboardClient() {
     </div>
   );
 }
-

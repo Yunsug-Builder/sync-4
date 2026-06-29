@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAnonClient } from "@/lib/supabase";
+import {
+  createSupabaseServiceRoleClient,
+  hasSupabaseServiceRoleConfig,
+} from "@/lib/supabase-service";
 
 type VerifyProfileRow = {
   x_handle: string | null;
@@ -131,7 +135,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const { error: updateError } = await supabase
+    if (!hasSupabaseServiceRoleConfig()) {
+      return NextResponse.json(
+        { ok: false, error: "SUPABASE_SERVICE_ROLE_KEY is required for secure profile writes." },
+        { status: 503 }
+      );
+    }
+
+    const supabaseServiceRole = createSupabaseServiceRoleClient();
+    const { error: updateError } = await supabaseServiceRole
       .from("profiles")
       .update({ is_x_verified: true })
       .eq("id", user.id);

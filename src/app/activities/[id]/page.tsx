@@ -23,6 +23,7 @@ type Row = {
   status: string;
   created_at: string;
   view_count?: number;
+  qualified_view_count?: number;
   is_settled?: boolean;
   profiles: unknown;
   activity_types: unknown;
@@ -55,8 +56,19 @@ type DetailData = {
   vibes: number;
   status: string;
   viewCount: number;
+  qualifiedViewCount: number;
   isSettled: boolean;
 };
+
+type ActivitySyncStateRow = {
+  sync_count: number | string | null;
+  is_synced: boolean | null;
+};
+
+function toNonNegativeInteger(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
 
 export default function ActivityDetailPage() {
   const { language: selectedLanguage, setLanguage } = useLanguage();
@@ -104,6 +116,7 @@ export default function ActivityDetailPage() {
           status,
           created_at,
           view_count,
+          qualified_view_count,
           is_settled,
           profiles ( nickname ),
           activity_types ( name, base_vibes )
@@ -138,6 +151,10 @@ export default function ActivityDetailPage() {
         typeof r.view_count === "number" && !Number.isNaN(r.view_count)
           ? r.view_count
           : 0;
+      const qvc =
+        typeof r.qualified_view_count === "number" && !Number.isNaN(r.qualified_view_count)
+          ? r.qualified_view_count
+          : 0;
 
       const imageUrls = Array.isArray(r.image_urls)
         ? r.image_urls
@@ -155,6 +172,7 @@ export default function ActivityDetailPage() {
         vibes: typeof at?.base_vibes === "number" ? at.base_vibes : 0,
         status: r.status,
         viewCount: vc,
+        qualifiedViewCount: qvc,
         isSettled: Boolean(r.is_settled),
       });
       setLoading(false);
@@ -185,11 +203,9 @@ export default function ActivityDetailPage() {
         return;
       }
 
-      const rpcPayload: { p_log_id: string; p_user_id: string | null } = {
+      const { error: rpcErr } = await supabase.rpc("increment_view_count_v5", {
         p_log_id: logId,
-        p_user_id: userId,
-      };
-      const { error: rpcErr } = await supabase.rpc("increment_view_count_v4", rpcPayload);
+      });
       if (cancelled) return;
       if (rpcErr) {
         return;
@@ -198,7 +214,7 @@ export default function ActivityDetailPage() {
       markActivityViewBumped(logId, viewerKey);
       const { data: vcRow } = await supabase
         .from("activity_logs")
-        .select("view_count")
+        .select("view_count, qualified_view_count")
         .eq("id", logId)
         .maybeSingle();
       if (cancelled) return;
@@ -208,6 +224,14 @@ export default function ActivityDetailPage() {
           : null;
       if (nextVc != null) {
         setData((d) => (d ? { ...d, viewCount: nextVc } : d));
+      }
+      const nextQvc =
+        vcRow &&
+        typeof (vcRow as { qualified_view_count?: number }).qualified_view_count === "number"
+          ? (vcRow as { qualified_view_count: number }).qualified_view_count
+          : null;
+      if (nextQvc != null) {
+        setData((d) => (d ? { ...d, qualifiedViewCount: nextQvc } : d));
       }
     })();
 
@@ -230,12 +254,11 @@ export default function ActivityDetailPage() {
     if (!id.trim()) return;
     const supabase = getSupabaseBrowserClient();
     void supabase
-      .from("activity_syncs")
-      .select("*", { count: "exact", head: true })
-      .eq("activity_id", id.trim())
-      .then(({ count, error }) => {
+      .rpc("get_activity_sync_state", { p_activity_id: id.trim() })
+      .then(({ data, error }) => {
         if (!error) {
-          setSyncCount(count ?? 0);
+          const row = firstOrNull(data as ActivitySyncStateRow[] | ActivitySyncStateRow | null);
+          setSyncCount(toNonNegativeInteger(row?.sync_count));
         }
       });
   }, [id]);
@@ -480,7 +503,7 @@ export default function ActivityDetailPage() {
             {isApproved ? (
               <ActivityRewardSection
                 baseVibes={data.vibes}
-                viewCount={data.viewCount}
+                qualifiedViewCount={data.qualifiedViewCount}
                 syncCount={syncCount}
                 isSettled={data.isSettled}
                 isApproved={isApproved}

@@ -97,7 +97,7 @@ export default function ProfilePage() {
 
     const { data: logs, error: qErr } = await supabase
       .from("activity_logs")
-      .select("id, view_count")
+      .select("id, qualified_view_count")
       .eq("user_id", user.id)
       .eq("status", "approved")
       .eq("is_settled", false);
@@ -109,14 +109,14 @@ export default function ProfilePage() {
       return;
     }
 
-    const normalizedLogs = (logs ?? []) as Array<{ id: string; view_count?: number }>;
+    const normalizedLogs = (logs ?? []) as Array<{ id: string; qualified_view_count?: number }>;
     let sum = 0;
     for (const row of normalizedLogs) {
-      const vc =
-        typeof row.view_count === "number" && !Number.isNaN(row.view_count)
-          ? row.view_count
+      const qualifiedViews =
+        typeof row.qualified_view_count === "number" && !Number.isNaN(row.qualified_view_count)
+          ? row.qualified_view_count
           : 0;
-      sum += estimatedBonusVibes(0, vc);
+      sum += estimatedBonusVibes(0, qualifiedViews);
     }
 
     setExpectedBonusVibesSum(sum);

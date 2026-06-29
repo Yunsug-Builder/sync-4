@@ -16,6 +16,7 @@ export type ApprovedLogRow = {
   ai_evaluation: Record<string, unknown> | null;
   raw_content: string | null;
   view_count: number;
+  qualified_view_count: number;
   is_settled: boolean;
   sync_count: number;
   estimated_bonus: number;
@@ -23,9 +24,19 @@ export type ApprovedLogRow = {
   activity_types: { name: string; base_vibes: number } | null;
 };
 
+type ActivitySyncCountRow = {
+  activity_id: string;
+  sync_count: number | string | null;
+};
+
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
   if (v == null) return null;
   return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+function toNonNegativeInteger(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
 }
 
 export async function GET(request: Request) {
@@ -59,10 +70,10 @@ export async function GET(request: Request) {
       ai_evaluation,
       raw_content,
       view_count,
+      qualified_view_count,
       is_settled,
       profiles ( nickname ),
-      activity_types ( name, base_vibes ),
-      activity_syncs ( count )
+      activity_types ( name, base_vibes )
     `
     )
     .eq("status", "approved")
@@ -76,19 +87,45 @@ export async function GET(request: Request) {
     );
   }
 
-  const logs: ApprovedLogRow[] = (rows ?? []).map((raw) => {
+  const rawRows = rows ?? [];
+  const activityIds = rawRows.map((raw) => String((raw as Record<string, unknown>).id));
+  const syncCountByActivityId = new Map<string, number>();
+
+  if (activityIds.length > 0) {
+    const { data: syncCounts, error: syncCountError } = await supabase.rpc(
+      "get_activity_sync_counts",
+      { p_activity_ids: activityIds }
+    );
+
+    if (syncCountError) {
+      console.error("[admin/approved-logs] sync counts", syncCountError);
+      return NextResponse.json(
+        { ok: false, error: syncCountError.message },
+        { status: 500 }
+      );
+    }
+
+    for (const row of (syncCounts ?? []) as ActivitySyncCountRow[]) {
+      syncCountByActivityId.set(
+        String(row.activity_id),
+        toNonNegativeInteger(row.sync_count)
+      );
+    }
+  }
+
+  const logs: ApprovedLogRow[] = rawRows.map((raw) => {
     const row = raw as Record<string, unknown>;
+    const id = String(row.id);
     const vc =
       typeof row.view_count === "number" && !Number.isNaN(row.view_count)
         ? row.view_count
         : 0;
+    const qvc =
+      typeof row.qualified_view_count === "number" && !Number.isNaN(row.qualified_view_count)
+        ? row.qualified_view_count
+        : 0;
 
-    const syncAgg = firstOrNull(
-      row.activity_syncs as { count?: number | string | null } | null
-    );
-    const syncCountRaw =
-      syncAgg?.count != null ? Number(syncAgg.count) : Number.NaN;
-    const sc = Number.isFinite(syncCountRaw) ? syncCountRaw : 0;
+    const sc = syncCountByActivityId.get(id) ?? 0;
     const aiEvaluationRaw = row.ai_evaluation;
     const aiEvaluation =
       aiEvaluationRaw != null && typeof aiEvaluationRaw === "object"
@@ -96,7 +133,7 @@ export async function GET(request: Request) {
         : null;
 
     return {
-      id: String(row.id),
+      id,
       content: row.content != null ? String(row.content) : null,
       created_at: String(row.created_at),
       user_id: String(row.user_id),
@@ -105,9 +142,10 @@ export async function GET(request: Request) {
       ai_evaluation: aiEvaluation,
       raw_content: row.raw_content != null ? String(row.raw_content) : null,
       view_count: vc,
+      qualified_view_count: qvc,
       is_settled: Boolean(row.is_settled),
       sync_count: sc,
-      estimated_bonus: estimatedBonusVibes(sc, vc),
+      estimated_bonus: estimatedBonusVibes(sc, qvc),
       profiles: firstOrNull(row.profiles as { nickname: string | null } | null),
       activity_types: firstOrNull(
         row.activity_types as { name: string; base_vibes: number } | null

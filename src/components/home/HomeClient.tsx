@@ -19,7 +19,6 @@ type FeedRowRaw = {
   artist_id: string;
   total_reward_vibes?: number | null;
   is_settled?: boolean | null;
-  activity_syncs?: Array<{ count: number | null }> | null;
   profiles: unknown;
   activity_types: unknown;
 };
@@ -48,12 +47,25 @@ type Artist = {
   sync_strategy: string | null;
 };
 
+type ActivitySyncCountRow = {
+  activity_id: string;
+  sync_count: number | string | null;
+};
+
 function firstOrNull<T>(v: T | T[] | null | undefined): T | null {
   if (v == null) return null;
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
-function normalizeFeedRow(row: FeedRowRaw): FeedEntry {
+function toNonNegativeInteger(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+}
+
+function normalizeFeedRow(
+  row: FeedRowRaw,
+  syncCountByActivityId: Map<string, number>
+): FeedEntry {
   const at = firstOrNull(row.activity_types as { name: string } | null);
   const imageUrls = Array.isArray(row.image_urls)
     ? row.image_urls
@@ -70,7 +82,7 @@ function normalizeFeedRow(row: FeedRowRaw): FeedEntry {
     created_at: row.created_at,
     activityName: at?.name?.trim() || "활동",
     reward_vibes: Math.max(0, Number(row.total_reward_vibes ?? 0)),
-    sync_count: Math.max(0, Number(firstOrNull(row.activity_syncs)?.count ?? 0)),
+    sync_count: syncCountByActivityId.get(row.id) ?? 0,
   };
 }
 
@@ -169,7 +181,6 @@ export default function HomeClient() {
         created_at,
         artist_id,
         total_reward_vibes,
-        activity_syncs ( count ),
         profiles ( nickname ),
         activity_types ( name )
       `
@@ -191,7 +202,22 @@ export default function HomeClient() {
     }
 
     const rows = (data ?? []) as FeedRowRaw[];
-    setEntries(rows.map(normalizeFeedRow));
+    const ids = rows.map((row) => row.id).filter(Boolean);
+    const syncCountByActivityId = new Map<string, number>();
+
+    if (ids.length > 0) {
+      const { data: syncCounts } = await supabase.rpc("get_activity_sync_counts", {
+        p_activity_ids: ids,
+      });
+      for (const raw of (syncCounts ?? []) as ActivitySyncCountRow[]) {
+        syncCountByActivityId.set(
+          String(raw.activity_id),
+          toNonNegativeInteger(raw.sync_count)
+        );
+      }
+    }
+
+    setEntries(rows.map((row) => normalizeFeedRow(row, syncCountByActivityId)));
     setLoadingFeed(false);
   }, [selectedArtistId]);
 

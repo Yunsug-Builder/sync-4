@@ -58,6 +58,33 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+type AdminActionResponse = { ok?: boolean; error?: string };
+
+async function readAdminActionResponse(
+  res: Response,
+  fallbackError: string
+): Promise<AdminActionResponse> {
+  const contentType = res.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      return (await res.json()) as AdminActionResponse;
+    } catch {
+      return { ok: false, error: "invalid_json_response" };
+    }
+  }
+
+  return {
+    ok: false,
+    error: res.status === 404 ? "api_route_not_found" : `${fallbackError}_${res.status}`,
+  };
+}
+
+function requestFailureMessage(error: unknown, fallbackError: string): string {
+  return error instanceof Error && error.message
+    ? `${fallbackError}: ${error.message}`
+    : fallbackError;
+}
+
 export default function AdminActivityReviewClient() {
   const params = useParams();
   const router = useRouter();
@@ -106,33 +133,49 @@ export default function AdminActivityReviewClient() {
   const actApprove = async () => {
     if (!log) return;
     setActing(true);
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(log.id)}/approve`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...headers },
-      body: JSON.stringify({
-        status: "approved",
-        rewarded_vibe: finalVibe,
-        ai_evaluation: log.ai_evaluation,
-      }),
-    });
-    const body = (await res.json()) as { ok?: boolean; error?: string };
-    setActing(false);
-    if (!res.ok || !body.ok) return toast.error(body.error ?? "승인 처리에 실패했습니다.");
-    toast.success("승인 완료");
-    router.replace("/admin");
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(log.id)}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({
+          status: "approved",
+          rewarded_vibe: finalVibe,
+          ai_evaluation: log.ai_evaluation,
+        }),
+      });
+      const body = await readAdminActionResponse(res, "approve_failed");
+      if (!res.ok || !body.ok) {
+        toast.error(body.error ?? "approve_failed");
+        return;
+      }
+      toast.success("승인 완료");
+      router.replace("/admin");
+    } catch (error) {
+      toast.error(requestFailureMessage(error, "approve_request_failed"));
+    } finally {
+      setActing(false);
+    }
   };
 
   const actReject = async () => {
     if (!log) return;
     setActing(true);
-    const headers = await getAuthHeaders();
-    const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(log.id)}/reject`, { method: "POST", headers });
-    const body = (await res.json()) as { ok?: boolean; error?: string };
-    setActing(false);
-    if (!res.ok || !body.ok) return toast.error(body.error ?? "반려 처리에 실패했습니다.");
-    toast.success("반려 완료");
-    router.replace("/admin");
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/admin/activity-logs/${encodeURIComponent(log.id)}/reject`, { method: "POST", headers });
+      const body = await readAdminActionResponse(res, "reject_failed");
+      if (!res.ok || !body.ok) {
+        toast.error(body.error ?? "reject_failed");
+        return;
+      }
+      toast.success("반려 완료");
+      router.replace("/admin");
+    } catch (error) {
+      toast.error(requestFailureMessage(error, "reject_request_failed"));
+    } finally {
+      setActing(false);
+    }
   };
 
   if (loading) return <div className="min-h-screen bg-zinc-950 px-6 py-10 text-zinc-400">불러오는 중…</div>;
