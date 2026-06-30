@@ -1,8 +1,25 @@
-# RPC function bodies (canonical)
+# RPC function bodies (historical export; post-P0 realignment pending)
 
 **Source:** production Supabase (user-provided export). **Synced:** 2026-04-29.
 
+> Post-P0 warning: function bodies in this file may reflect pre-P0 Production state. Do not treat this file as the latest canonical RPC source until a post-P0 Production re-export is completed. Phase 1 P0 hardening was applied through `supabase/migrations/020_p0_security_hardening_phase1.sql` and verified in `DOCS/PROD_VERIFY_20260625.md` under the 2026-06-29 section.
+
 전체 시그니처 요약은 [RPC_SPEC.md](./RPC_SPEC.md)를 참고하세요.
+
+---
+
+## Post-P0 RPC notes
+
+These notes summarize confirmed 020-era grants and behavior only. They do not replace a full function-body re-export.
+
+- `admin_approve_activity_log` and `admin_approve_activity_log_v2` are service_role only.
+- `perform_weekly_settlement` is service_role only.
+- Settlement/reward calculation must use `qualified_view_count` or trusted qualified-view data, not `view_count`.
+- `increment_view_count_v2` and `increment_view_count_v3` block `anon` and `authenticated` execution.
+- `increment_view_count_v5` is the post-P0 view RPC path; `increment_view_count_v4` remains allowed for `anon` and `authenticated` as the compatibility wrapper.
+- `set_activity_sync` is authenticated only.
+- `get_activity_sync_state` and `get_activity_sync_counts` are allowed for `anon` and `authenticated`.
+- Direct client table access to `activity_syncs` and `activity_view_logs` remains blocked; use the sync/view RPCs.
 
 ---
 

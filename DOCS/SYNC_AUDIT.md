@@ -1,12 +1,12 @@
 # [SYNC] 프로젝트 현황 및 보안 진단 리포트
 
 > **분석 기준일:** 2026-06-21  
-> **Canonical DB/RPC:** `DOCS/DB_SCHEMA.md`, `DOCS/RPC_SPEC.md`, `DOCS/RPC_FUNCTIONS.md` (production export, 2026-04-29)  
+> **Historical DB/RPC references at audit time:** `DOCS/DB_SCHEMA.md`, `DOCS/RPC_SPEC.md`, `DOCS/RPC_FUNCTIONS.md` (production export, 2026-04-29)
 > **로컬 마이그레이션:** `supabase/migrations/` (001–019) — production과 **불일치 다수 확인**
 
 ---
 
-> Note: This audit report is treated as a historical reference during Phase 1 recovery. Confirmed findings and current Production verification results are tracked in `DOCS/PROD_VERIFY_YYYYMMDD.md`.
+> Note: This audit report is a historical reference. P0 hardening resolution, apply verification, post-apply DB verification, and regression results are tracked in `DOCS/PROD_VERIFY_20260625.md` under the 2026-06-29 section. Do not treat this audit as current canonical Production DB/RPC state.
 
 ## 1. 아키텍처 및 코어 파일 구조
 

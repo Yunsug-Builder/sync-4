@@ -1,8 +1,23 @@
-# DB Schema (canonical)
+# DB Schema (historical export; post-P0 realignment pending)
 
 **Source:** production Supabase (user-provided export). **Synced:** 2026-04-29.
 
+> Post-P0 warning: this file is not the current canonical Production schema. It is a historical 2026-04-29 export and must be realigned after a fresh Production re-export. Phase 1 P0 hardening was applied through `supabase/migrations/020_p0_security_hardening_phase1.sql` and verified in `DOCS/PROD_VERIFY_20260625.md` under the 2026-06-29 section. For DB/RLS/grants work, check that verification record and migration 020 before relying on this file.
+
 앱 코드·마이그레이션을 수정할 때 **이 문서를 우선**하고, 로컬 `supabase/migrations`와 차이가 있으면 마이그레이션을 DB에 맞추거나 이 문서를 갱신하세요.
+
+## Post-P0 hardening notes
+
+These notes summarize confirmed 020-era changes only. They do not replace a full Production schema re-export.
+
+- Migration `020_p0_security_hardening_phase1.sql` has been applied to Production with SQL Editor result `Success. No rows returned`.
+- Post-apply verification confirmed RLS enabled for `profiles`, `activity_logs`, `activity_syncs`, `activity_view_logs`, and `settlement_history`.
+- Direct client table access to `activity_syncs` and `activity_view_logs` is blocked; sync/view flows must use the approved RPC paths.
+- Direct `anon`/`authenticated` writes to `activity_logs` are blocked; `service_role` server privileges are preserved.
+- `settlement_history` is `authenticated` SELECT-only; settlement mutation remains server-only through service-role-controlled paths.
+- `view_count` is the public display metric. `qualified_view_count` is the reward/settlement metric. Reward and settlement logic must not use `view_count`.
+- Direct client writes to `profiles.total_vibes` and `profiles.is_admin` are blocked.
+- `profiles` public SELECT remains broad and is a Phase 1.5 read-minimization backlog item.
 
 | table_name         | column_name          | data_type                | is_nullable | column_default               |
 | ------------------ | -------------------- | ------------------------ | ----------- | ---------------------------- |

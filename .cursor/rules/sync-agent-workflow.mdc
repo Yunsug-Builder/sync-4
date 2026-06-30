@@ -5,6 +5,17 @@ alwaysApply: true
 
 # SYNC Agent Workflow
 
+## Post-P0 reference order
+
+Phase 1 P0 security hardening is complete in Production through `supabase/migrations/020_p0_security_hardening_phase1.sql`; the apply and post-apply verification record is `DOCS/PROD_VERIFY_20260625.md` under the 2026-06-29 section.
+
+Before DB, RLS, grants, RPC, reward, settlement, view, sync, or admin-access work:
+
+- Read `DOCS/PROD_VERIFY_20260625.md` first.
+- Read `supabase/migrations/020_p0_security_hardening_phase1.sql` next.
+- Treat `DOCS/DB_SCHEMA.md`, `DOCS/RPC_FUNCTIONS.md`, `DOCS/RPC_SPEC.md`, and `DOCS/SYNC_AUDIT.md` as historical/pending realignment references, not as current canonical Production state.
+- Do not run Supabase remote commands, apply migrations, or change schema/RLS/policies without explicit user approval.
+
 ## Local verification after code changes
 
 When code is changed and verification is relevant, run only these allowed local checks:
@@ -13,6 +24,37 @@ When code is changed and verification is relevant, run only these allowed local 
 - `npm run typecheck`, `npm run lint`, `npm test`
 
 If verification fails, analyze the cause, fix the issue, and re-run the relevant check before finishing.
+
+## Completion checklist for every scoped task
+
+Before finishing, decide whether testing and documentation sync are required for the work just completed.
+
+- Test the core user flow when a feature-sized unit changes.
+- Check loading, empty, error, and permission states when the edited flow depends on them.
+- Record important test or verification results when they affect future work.
+- For inline Cursor edits, still check whether related docs or verification records need updates.
+
+Documentation sync must be considered for:
+
+- Phase transitions
+- DB schema, RLS, grants, RPC, or migration changes
+- Reward or settlement rule changes
+- AI workflow or operating-rule changes
+- Product direction changes
+- Deployment, environment-variable, or security-operation changes
+- Completion of a feature-sized unit of work
+- Discovery and resolution of an important regression
+
+Documentation sync levels:
+
+- Level 0: no update for typos, tiny style fixes, or internal-only implementation changes with no policy or flow impact.
+- Level 1: update record/verification docs for test results, verification results, or small bug fixes.
+- Level 2: update related docs for one completed feature, API/RPC call-flow change, or UI-flow change.
+- Level 3: full document sync for phase transitions, DB/RLS/RPC changes, reward/settlement policy changes, or Source of Truth changes.
+
+Repo IDE docs and browser AI shared docs are both synchronization targets. Repo-local agents cannot edit browser AI shared docs directly; when those docs are outside the repo, list them as follow-up items.
+
+Operating rules are living documents. When repeated mistakes, missed tests, missed docs, or AI workflow errors happen, add a concrete prevention rule that states when it applies, what to check, and where to record the result.
 
 ## Explicit approval required first
 

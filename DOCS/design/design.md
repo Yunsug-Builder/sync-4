@@ -2,9 +2,9 @@
 
 Status: Draft  
 Scope: Design principles and UI guardrails only  
-Phase: P0 security recovery period  
+Phase: Post-P0 stabilization; baseline/schema/RPC realignment pending
 Owner: Product / Design / Engineering  
-Last updated: YYYY-MM-DD
+Last updated: 2026-06-30
 
 ---
 
@@ -16,7 +16,7 @@ SYNC is not a generic social app, a generic SaaS dashboard, or a decorative fand
 
 The goal of this document is not to redesign every screen immediately. The goal is to prevent inconsistent AI-generated UI and to provide clear rules for ChatGPT, Codex, Cursor, Gemini, and future contributors.
 
-During the current P0 security recovery phase, this document should be used as a design reference only. Large-scale UI changes should wait until critical reward, admin, and database risks are stabilized.
+P0 security hardening apply and regression verification passed on 2026-06-29. During post-P0 stabilization, this document remains a design reference only. Design implementation should proceed after baseline/schema/RPC realignment planning, in this order: UI audit, token plan, common component plan, then scoped implementation.
 
 ---
 
@@ -835,34 +835,39 @@ A feature is not complete until the following checks pass.
 
 ---
 
-## 15. P0 Phase Policy
+## 15. Post-P0 Phase Policy
 
-During P0 security recovery:
+During post-P0 stabilization and baseline/schema/RPC realignment:
 
 Allowed:
 - Update this document.
 - Add review notes.
 - Define tokens conceptually.
 - Identify UI risks.
+- Audit current screens against this document without changing code.
+- Prepare token and component implementation plans.
 
 Not allowed unless explicitly approved:
 - Large-scale UI refactor.
 - Global Tailwind token migration.
 - Replacing shared components.
-- Redesigning admin decision flow while security validation is ongoing.
+- Redesigning admin decision flow before baseline/schema/RPC realignment is settled.
 - Adding new animations or visual effects.
 
-After P0:
-1. Convert this document into Tailwind/CSS tokens.
-2. Create common UI components.
-3. Refactor duplicated button/card/badge/input patterns.
-4. Improve core screens in this order:
+After post-P0 stabilization:
+1. Audit current UI against this document.
+2. Create Tailwind/CSS token implementation plan.
+3. Create common component implementation plan.
+4. Convert approved rules into Tailwind/CSS tokens.
+5. Create common UI components.
+6. Refactor duplicated button/card/badge/input patterns.
+7. Improve core screens in this order:
    - Archive Feed
    - Write / Activity Creation
    - Reward / Settlements
    - Profile / My Archive
    - Admin Review
-5. Run reference review and update to design.md v0.2.
+8. Run reference review and update to design.md v0.2.
 
 ---
 

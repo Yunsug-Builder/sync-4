@@ -486,3 +486,7 @@ Passed:
 
 ### Result
 P0 security hardening apply, post-apply DB verification, and local regression verification are complete and passed as of 2026-06-29.
+
+Next step: baseline/schema/RPC documentation realignment against the verified Production DB state and migration 020.
+
+Follow-up: operational rules were added to `AGENTS.md`, `.cursor/rules/sync-agent-workflow.mdc`, and design process docs to require documentation-sync checks after significant work.

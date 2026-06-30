@@ -4,14 +4,70 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-During Phase 1 recovery, existing DOCS files are treated as historical references only. The Production Supabase database is the temporary Source of Truth until the baseline migration is rebuilt. Do not treat DOCS/DB_SCHEMA.md, DOCS/RPC_FUNCTIONS.md, DOCS/RPC_SPEC.md, or DOCS/SYNC_AUDIT.md as authoritative for current Production DB state.
+Post-P0 status: Phase 1 P0 security hardening has been applied to Production through `supabase/migrations/020_p0_security_hardening_phase1.sql` and verified in `DOCS/PROD_VERIFY_20260625.md` under the 2026-06-29 section. Baseline/schema/RPC realignment is still pending. Treat `DOCS/DB_SCHEMA.md`, `DOCS/RPC_FUNCTIONS.md`, `DOCS/RPC_SPEC.md`, and `DOCS/SYNC_AUDIT.md` as historical references until they are regenerated from Production; for DB/RLS/RPC work, check `DOCS/PROD_VERIFY_20260625.md` and migration 020 first.
 
 ## Project Context
 
 - SYNC is a fandom archiving and reward platform.
-- The current priority is Phase 1: P0 security recovery, DB drift recovery, and development rule-setting.
+- The current priority is Phase 1.5 / post-P0 stabilization: baseline migration recovery, schema/RPC documentation realignment, and stable development rule-setting.
 - Do not prioritize new feature expansion unless explicitly requested.
 - Prioritize security verification, safe changes, and stable engineering workflow.
+
+## Operational Rules and Documentation Sync
+
+Before finishing meaningful work, decide whether tests and documentation sync are required for the size and risk of the change.
+
+Documentation sync must be considered when work includes:
+
+- Phase transitions
+- DB schema, RLS, grants, RPC, or migration changes
+- Reward or settlement rule changes
+- AI agent workflow or operating-rule changes
+- Product direction changes
+- Deployment, environment-variable, or security-operation changes
+- Completion of a feature-sized unit of work
+- Discovery and resolution of an important regression during testing
+
+Use these documentation sync levels:
+
+- Level 0: no document update needed for typo fixes, tiny style changes, or internal-only implementation changes with no policy or flow impact.
+- Level 1: update record/verification documents only for test results, verification results, or small bug fixes.
+- Level 2: update the related documents for one completed feature, API/RPC call-flow change, or UI-flow change.
+- Level 3: perform full document synchronization for phase transitions, DB/RLS/RPC changes, reward/settlement policy changes, or Source of Truth changes.
+
+Feature Definition of Done:
+
+- User value is clear.
+- Core user flow has been tested at the right level.
+- Loading, empty, error, and permission states are checked when relevant.
+- Documentation sync need has been judged.
+- Test results or decisions are recorded when they affect future work.
+
+DB/RLS/RPC Definition of Done:
+
+- State impact scope before making changes.
+- State migration or SQL apply method.
+- Run post-apply verification or equivalent local verification.
+- Record rollback/recovery plan.
+- Record results in `DOCS/PROD_VERIFY_YYYYMMDD.md` or the relevant verification document.
+- Decide whether `DOCS/DB_SCHEMA.md`, `DOCS/RPC_FUNCTIONS.md`, and `DOCS/RPC_SPEC.md` need sync.
+- Check service_role exposure and client exposure.
+
+Refactoring policy:
+
+- Do not casually mix feature work and broad refactoring.
+- Define scope, test method, and rollback plan before refactoring.
+- Plan refactoring after a feature bundle completes, complexity/duplication accumulates, around phase transitions, or during stabilization after security/performance work.
+- Limit UI and structure refactoring during P0/P1 security stabilization.
+
+Documentation Source of Truth:
+
+- Repo IDE docs and browser AI shared docs are both synchronization targets.
+- After repo docs are updated, note any browser AI shared docs that need the same status update.
+- Keep paired docs such as `design.md` and `design-process.md` consistent across locations.
+- For historical references, prefer adding a banner and links to current verification docs instead of overwriting history.
+
+Operating rules are living documents. When repeated mistakes, missed tests, missed docs, or AI workflow errors happen, add a concrete prevention rule that says when it applies, what to check, and where to record the result.
 
 ## Security-Sensitive Areas
 

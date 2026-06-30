@@ -17,7 +17,7 @@ This document defines how design work is planned, reviewed, and implemented in S
 
 ## 2. Current Phase Policy
 
-SYNC is currently in Phase 1: P0 security recovery and system stabilization.
+SYNC has completed Phase 1 P0 security hardening apply and regression verification. The current phase is post-P0 stabilization with baseline/schema/RPC realignment pending.
 
 During this phase, design work is limited to:
 
@@ -26,6 +26,8 @@ Allowed:
 - Maintaining `docs/design/design-process.md`
 - Collecting design references
 - Reviewing UI risks without code changes
+- Auditing current UI against `docs/design/design.md`
+- Preparing token and common component plans
 - Adding design notes for later
 
 Not allowed unless explicitly approved:
@@ -34,12 +36,12 @@ Not allowed unless explicitly approved:
 - Shared component refactor
 - Admin review UI redesign
 - Animation or visual effect work
-- Any design change that increases P0 verification scope
+- Any design change that expands post-P0 stabilization or DB/RPC realignment scope
 
 Reason:
-- P0 security and DB stability are higher priority than visual refinement.
-- UI changes during P0 can make regression tracking harder.
-- Reward, admin, and settlement-related UI must not be refactored while related security logic is still being verified.
+- Baseline/schema/RPC realignment is higher priority than visual refinement.
+- UI changes during post-P0 stabilization can make regression tracking harder.
+- Reward, admin, and settlement-related UI must not be broadly refactored until the post-P0 baseline is settled.
 
 ---
 
@@ -48,7 +50,7 @@ Reason:
 ### 3.1 Before P0 Completion
 
 Goal:
-- Prepare design standards, not redesign screens.
+- Historical policy: prepare design standards, not redesign screens.
 
 Allowed outputs:
 - `design.md` updates
@@ -59,19 +61,23 @@ Allowed outputs:
 Code impact:
 - None, unless explicitly approved.
 
-### 3.2 Immediately After P0 Completion
+### 3.2 Post-P0 Stabilization
 
 Goal:
-- Convert design rules into low-risk implementation foundations.
+- Convert design rules into low-risk implementation foundations after stabilization planning.
 
 Recommended sequence:
-1. Review `design.md v0.1`
-2. Review collected references
-3. Create `design.md v0.2`
-4. Define Tailwind/CSS token plan
-5. Define common component plan
-6. Audit current UI against `design.md`
-7. Prioritize implementation tasks
+1. Confirm post-P0 verification and baseline realignment status.
+2. Audit current UI against `design.md v0.1`.
+3. Review collected references.
+4. Create `design.md v0.2` if needed.
+5. Define Tailwind/CSS token plan.
+6. Define common component plan.
+7. Prioritize scoped implementation tasks.
+
+Backlog items:
+- Delete confirmation UI improvement remains in the design backlog.
+- Google Fonts local/self-host transition remains in the stabilization backlog.
 
 ### 3.3 During Feature Development After P0
 
@@ -86,7 +92,9 @@ Process:
 6. Capture screenshots
 7. Review against UI checklist
 8. Fix design issues
-9. Mark feature as complete
+9. Decide documentation sync level
+10. Record design backlog or verification notes when needed
+11. Mark feature as complete
 
 A feature is not complete if:
 - Loading, empty, or error states are missing
@@ -94,6 +102,8 @@ A feature is not complete if:
 - Arbitrary colors or UI patterns are introduced
 - The screen violates anti-patterns in `design.md`
 - The primary action is ambiguous
+- Screenshot review was required but not completed
+- Related design docs, backlog notes, or verification records were not considered
 
 ---
 
@@ -140,6 +150,15 @@ Every user-facing feature must pass the following checks.
 - Final VIBE value must be visible before approval
 - UI must not encourage one-click approve bias
 
+### 4.7 Documentation and Backlog Sync
+
+- Decide whether the design task is documentation sync Level 0, 1, 2, or 3 under `AGENTS.md`.
+- Record screenshot-review findings when the task changes visible UI.
+- Record deferred design or stabilization items in the relevant backlog or design notes instead of leaving them implicit.
+- Delete confirmation UI improvement may remain a design backlog item until scoped.
+- Google Fonts local/self-host transition may remain a stabilization backlog item until scoped.
+- Keep repo design docs and browser AI shared design docs aligned when both exist.
+
 ---
 
 ## 5. Design Change Levels
@@ -151,7 +170,7 @@ Examples:
 - Update `design-process.md`
 - Add reference notes
 
-Allowed during P0:
+Allowed during post-P0 stabilization:
 - Yes
 
 Review required:
@@ -164,7 +183,7 @@ Examples:
 - Improve empty-state copy
 - Align spacing in one isolated component
 
-Allowed during P0:
+Allowed during post-P0 stabilization:
 - Only if it supports P0 work or does not affect verification scope
 
 Review required:
@@ -182,7 +201,7 @@ Examples:
 - EmptyState
 - ErrorAlert
 
-Allowed during P0:
+Allowed during post-P0 stabilization:
 - No, unless explicitly approved
 
 Review required:
@@ -200,7 +219,7 @@ Examples:
 - Settlements redesign
 - Admin review redesign
 
-Allowed during P0:
+Allowed during post-P0 stabilization:
 - No
 
 Review required:
@@ -217,7 +236,7 @@ Examples:
 - Global layout change
 - Theme system change
 
-Allowed during P0:
+Allowed during post-P0 stabilization:
 - No
 
 Review required:
@@ -368,7 +387,7 @@ After UI implementation:
 
 ## 10. Reference Research Process
 
-Reference research can happen during P0, but implementation waits until after P0.
+Reference research can happen during post-P0 stabilization, but implementation waits until after UI audit, token plan, and common component plan.
 
 Reference notes should be stored in:
 
@@ -415,9 +434,10 @@ Review needed later:
 ## 12. Current Decisions
 
 - `design.md v0.1` is the current design guideline.
-- No large-scale UI redesign during P0.
-- Design reference research may proceed during P0.
-- Actual design implementation starts after P0 completion.
+- P0 security hardening apply and regression verification passed on 2026-06-29.
+- No large-scale UI redesign during post-P0 stabilization and baseline realignment.
+- Design reference research may proceed during post-P0 stabilization.
+- Actual design implementation starts after UI audit, token plan, and common component plan.
 - New features after P0 must include design review in Definition of Done.
 - `sync-purple #8B5CF6` is the temporary canonical brand accent.
 - Admin UI must be evidence-first, not decorative.
