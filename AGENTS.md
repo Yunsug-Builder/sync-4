@@ -67,6 +67,14 @@ Documentation Source of Truth:
 - Keep paired docs such as `design.md` and `design-process.md` consistent across locations.
 - For historical references, prefer adding a banner and links to current verification docs instead of overwriting history.
 
+Task boundary and chat handoff:
+
+- After completing a feature, documentation sync, DB/RLS/RPC task, design task, or phase-sized task, decide whether the next large task should start in a new chat before continuing.
+- Recommend a new chat when a feature or large task is complete, the phase or priority changes, documentation sync is complete and development work is next, DB/RLS/RPC work is switching to design/product strategy, the conversation has become too long for focused work, or another AI/session needs to continue.
+- Keep the same chat when review, commit, or documentation for the current task is not finished, the previous result needs immediate verification, or the next item is a small follow-up in the same task.
+- When moving to a new chat, write a handoff prompt that includes the current project phase, completed work and commits, working tree state, git push status, current Source of Truth docs, next objective, absolute don'ts, DB/RLS/RPC/security cautions, test/verification status, remaining backlog, recommended AI role split, and the first prompt to run.
+- At each task boundary, decide together: whether tests are needed, whether documentation sync is needed, whether a new chat is better, and whether a handoff prompt is needed.
+
 Operating rules are living documents. When repeated mistakes, missed tests, missed docs, or AI workflow errors happen, add a concrete prevention rule that says when it applies, what to check, and where to record the result.
 
 ## Security-Sensitive Areas
